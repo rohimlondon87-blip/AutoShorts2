@@ -1,0 +1,12 @@
+name: Auto Shorts Uploader
+
+on:
+  schedule:
+    # Menit 0, pada jam 5, 10, dan 13 (Waktu UTC)
+    # Ini sama dengan jam 12, 17, dan 20 WIB
+    - cron: '0 5,10,13 * * *' 
+  
+  workflow_dispatch: # Agar tetap bisa dijalankan manual tombol
+
+jobs:
+# ... (Sisa kode sama) ...
