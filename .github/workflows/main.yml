@@ -20,9 +20,10 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: '3.11' # Diupdate ke 3.11 agar support library Google terbaru
 
       - name: Install Library
+        # Kita kunci versi google-generativeai agar script tidak error karena perubahan update
         run: pip install google-api-python-client google-auth-oauthlib google-auth-httplib2 google-generativeai moviepy==1.0.3
 
       - name: Jalankan Robot
