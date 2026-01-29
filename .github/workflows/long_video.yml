@@ -2,9 +2,9 @@ name: Auto Long Video Uploader
 
 on:
   schedule:
-    # Contoh: Upload setiap jam 19:00 WIB (12:00 UTC)
-    - cron: '0 12 * * *'
-  workflow_dispatch:      # Tombol untuk jalan manual
+    # Jam 02:30 UTC = Jam 09:30 WIB (Sekali sehari)
+    - cron: '30 2 * * *'
+  workflow_dispatch:      # Tombol untuk menjalankan manual
 
 jobs:
   upload_long:
