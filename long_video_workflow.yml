@@ -25,7 +25,7 @@ jobs:
         env:
           CLIENT_SECRETS_DATA: ${{ secrets.CLIENT_SECRETS_DATA }}
           TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
-          SOURCE_FOLDER_ID: ${{ secrets.SOURCE_FOLDER_ID }}
+          SOURCE_LONG_ID: ${{ secrets.SOURCE_LONG_ID }}
           PROCESSED_FOLDER_ID: ${{ secrets.PROCESSED_FOLDER_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           YOUTUBE_PRIVACY: ${{ secrets.YOUTUBE_PRIVACY }}
