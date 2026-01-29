@@ -1,0 +1,32 @@
+name: Auto Long Video Uploader
+
+on:
+  schedule:
+    # Contoh: Upload setiap jam 19:00 WIB (12:00 UTC)
+    - cron: '0 12 * * *'
+  workflow_dispatch:      # Tombol untuk jalan manual
+
+jobs:
+  upload_long:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ambil Kode
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Library
+        run: pip install google-api-python-client google-auth-oauthlib google-auth-httplib2 google-generativeai
+
+      - name: Jalankan Robot Video Panjang
+        env:
+          CLIENT_SECRETS_DATA: ${{ secrets.CLIENT_SECRETS_DATA }}
+          TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
+          SOURCE_FOLDER_ID: ${{ secrets.SOURCE_FOLDER_ID }}
+          PROCESSED_FOLDER_ID: ${{ secrets.PROCESSED_FOLDER_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          YOUTUBE_PRIVACY: ${{ secrets.YOUTUBE_PRIVACY }}
+        run: python auto_long_uploader.py
