@@ -2,9 +2,10 @@ name: Auto Shorts Uploader
 
 on:
   schedule:
-    # Menit 0, pada jam 5, 10, dan 13 (Waktu UTC)
-    # Ini sama dengan jam 12, 17, dan 20 WIB
-    - cron: '0 5,10,13 * * *'
+    # Berjalan 6 kali sehari (Setiap 4 jam)
+    # Jam 22, 2, 6, 10, 14, 18 UTC 
+    # Sama dengan Jam 5, 9, 13, 17, 21, 1 WIB
+    - cron: '0 2,6,10,14,18,22 * * *'
   workflow_dispatch:      # Tombol untuk menjalankan manual
 
 jobs:
@@ -20,10 +21,9 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11' # Diupdate ke 3.11 agar support library Google terbaru
+          python-version: '3.11'
 
       - name: Install Library
-        # Kita kunci versi google-generativeai agar script tidak error karena perubahan update
         run: pip install google-api-python-client google-auth-oauthlib google-auth-httplib2 google-generativeai moviepy==1.0.3
 
       - name: Jalankan Robot
