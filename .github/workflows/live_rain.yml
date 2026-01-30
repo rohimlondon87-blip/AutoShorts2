@@ -2,9 +2,8 @@ name: Auto Rain Live Stream
 
 on:
   schedule:
-    # 15:00 UTC = 22:00 WIB
-    - cron: '0 15 * * *'
-  workflow_dispatch:      # Tombol manual di tab Actions
+    - cron: '0 15 * * *' # Jam 22:00 WIB
+  workflow_dispatch:      # Tombol manual
 
 jobs:
   live_session:
@@ -24,12 +23,12 @@ jobs:
       - name: Install Library
         run: pip install google-api-python-client google-auth-oauthlib google-auth-httplib2 google-generativeai
 
-      - name: Jalankan Robot Live Hujan
+      - name: Jalankan Robot Live
         env:
-          # Mendukung TOKEN_DATA_LIVE (Akun berbeda) atau TOKEN_DATA (Akun sama)
-          TOKEN_DATA_LIVE: ${{ secrets.TOKEN_DATA_LIVE }}
           TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
           SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
+          MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }} # <--- BARIS INI WAJIB ADA
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
         run: python auto_live_rain.py
+
