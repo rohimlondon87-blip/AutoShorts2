@@ -4,39 +4,34 @@ import pickle
 import subprocess
 import json
 import random
-import time
 import sys
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
 from google.auth.transport.requests import Request
 import google.generativeai as genai
 
 # --- KONFIGURASI ---
-# Robot akan mencoba TOKEN_DATA_LIVE dulu, jika kosong pakai TOKEN_DATA utama
 TOKEN_B64 = os.environ.get('TOKEN_DATA_LIVE') or os.environ.get('TOKEN_DATA')
-SOURCE_ID = os.environ.get('SOURCE_LIVE_ID') 
+SOURCE_ID = os.environ.get('SOURCE_LIVE_ID')    # Folder Video Hujan
+MUSIC_ID = os.environ.get('MUSIC_FOLDER_ID')    # Folder Musik MP3 (Baru)
 API_KEY = os.environ.get('GEMINI_API_KEY')
 STREAM_KEY = os.environ.get('YOUTUBE_STREAM_KEY')
 
-# Durasi Live diacak antara 50 menit (3000 detik) - 60 menit (3600 detik)
-LIVE_DURATION = random.randint(3000, 3600) 
+# Durasi live diacak antara 50 - 60 menit
+LIVE_DURATION_SEC = random.randint(3000, 3600) 
 
-def validate_config():
-    """Memastikan semua Secret di GitHub sudah diisi"""
+def validate_environment():
     missing = []
-    if not TOKEN_B64: missing.append("TOKEN_DATA")
     if not SOURCE_ID: missing.append("SOURCE_LIVE_ID")
-    if not API_KEY: missing.append("GEMINI_API_KEY")
+    if not MUSIC_ID: missing.append("MUSIC_FOLDER_ID")
     if not STREAM_KEY: missing.append("YOUTUBE_STREAM_KEY")
+    if not TOKEN_B64: missing.append("TOKEN_DATA")
     
     if missing:
-        print(f"⛔ ERROR: Secret berikut belum diisi: {', '.join(missing)}")
+        print(f"⛔ ERROR: Secret belum lengkap: {', '.join(missing)}")
         sys.exit(1)
-    
     genai.configure(api_key=API_KEY)
 
 def get_drive_service():
-    """Login ke Google Drive"""
     try:
         creds = pickle.loads(base64.b64decode(TOKEN_B64))
         if creds.expired and creds.refresh_token:
@@ -46,84 +41,105 @@ def get_drive_service():
         print(f"Auth Error: {e}")
         return None
 
+def get_random_file(service, folder_id, mime_prefix):
+    """Mengambil satu file acak berdasarkan tipe (video atau audio)"""
+    q = f"'{folder_id}' in parents and mimeType contains '{mime_prefix}' and trashed=false"
+    results = service.files().list(q=q, fields="files(id, name)").execute()
+    files = results.get('files', [])
+    if not files:
+        return None
+    return random.choice(files)
+
 def get_ai_metadata():
-    """Gemini membuat judul yang menarik untuk audiens relaksasi"""
     model = genai.GenerativeModel('gemini-1.5-flash')
     prompt = (
-        "Buatkan Judul dan Deskripsi LIVE YouTube tentang suara hujan menenangkan. "
-        "Target audiens: orang insomnia, belajar, atau meditasi. "
-        "Gunakan bahasa Indonesia yang estetik. "
+        "Buatkan metadata LIVE YouTube tentang suara hujan menenangkan yang dipadukan dengan musik piano/lofi. "
+        "Target: tidur, belajar, atau meditasi. "
         "Hasilkan HANYA JSON: {'title': '...', 'description': '...'}"
     )
     try:
         res = model.generate_content(prompt)
-        clean_json = res.text.replace('```json','').replace('```','').strip()
-        return json.loads(clean_json)
+        clean_text = res.text.replace('```json','').replace('```','').strip()
+        return json.loads(clean_text)
     except:
         return {
-            "title": "Suara Hujan Alami untuk Tidur Nyenyak 🌧️ Relaksasi & Meditasi",
-            "description": "Nikmati suasana hujan untuk ketenangan pikiran. #rain #sleep"
+            "title": "Hujan Alami & Musik Relaksasi 🌧️🎹 Tidur Nyenyak & Fokus Belajar",
+            "description": "Perpaduan suara hujan dan musik untuk ketenangan Anda. #rain #lofi #meditation"
         }
 
 def main():
-    print(f"=== MULAI LIVE STREAM ({LIVE_DURATION//60} MENIT) ===")
-    validate_config()
+    print(f"=== MULAI LIVE STREAM HUJAN + MUSIK ({LIVE_DURATION_SEC//60} MENIT) ===")
+    validate_environment()
     drive = get_drive_service()
     if not drive: return
 
-    # 1. Cari video di folder khusus Live Hujan
-    q = f"'{SOURCE_ID}' in parents and mimeType='video/mp4' and trashed=false"
-    files = drive.files().list(q=q, fields="files(id, name)").execute().get('files', [])
+    # 1. Pilih Video dan Musik secara acak
+    video_file = get_random_file(drive, SOURCE_ID, "video")
+    music_file = get_random_file(drive, MUSIC_ID, "audio")
 
-    if not files:
-        print("[-] Folder Drive kosong. Masukkan video hujan Anda!")
+    if not video_file or not music_file:
+        print("[-] Gagal mengambil video atau musik dari Drive. Pastikan folder tidak kosong.")
         return
 
-    # Pilih video acak dari Drive
-    selected_file = random.choice(files)
-    print(f"[*] Menggunakan file: {selected_file['name']}")
+    print(f"[*] Video: {video_file['name']}")
+    print(f"[*] Musik: {music_file['name']}")
 
-    # 2. Metadata AI
+    # 2. Ambil Metadata AI
     meta = get_ai_metadata()
     print(f"[*] Judul: {meta['title']}")
 
-    # 3. Download Video
-    print("[*] Mengunduh video...")
-    request = drive.files().get_media(fileId=selected_file['id'])
-    with open("live_input.mp4", "wb") as f:
-        f.write(request.execute())
+    # 3. Download Bahan
+    print("[*] Mengunduh bahan...")
+    with open("vid.mp4", "wb") as f:
+        f.write(drive.files().get_media(fileId=video_file['id']).execute())
+    with open("mus.mp3", "wb") as f:
+        f.write(drive.files().get_media(fileId=music_file['id']).execute())
 
-    # 4. Stream ke YouTube menggunakan FFmpeg
-    # -stream_loop -1 sangat penting untuk mengulang video < 3 menit menjadi 1 jam
-    print(f"[*] Memulai siaran ke YouTube...")
+    # 4. Stream HD dengan Mixing Audio (FFmpeg)
+    # amix=inputs=2 menggabungkan suara hujan (dari video) dan musik
+    print(f"[*] Memulai siaran HD dengan mixing audio...")
     
     cmd = [
         'ffmpeg',
-        '-re',                          # Kecepatan asli
-        '-stream_loop', '-1',           # LOOP TANPA BATAS
-        '-i', 'live_input.mp4',         # File input
-        '-t', str(LIVE_DURATION),       # Berhenti setelah X detik
-        '-c:v', 'libx264',              # Video codec
-        '-preset', 'veryfast',          # Ringan untuk server
-        '-b:v', '3000k',                # Bitrate stabil
-        '-maxrate', '3000k',
-        '-bufsize', '6000k',
+        '-re',                          
+        '-stream_loop', '-1', '-i', 'vid.mp4', # Input 0: Video (Loop)
+        '-stream_loop', '-1', '-i', 'mus.mp3', # Input 1: Musik (Loop)
+        '-t', str(LIVE_DURATION_SEC),   
+        
+        # Filter Complex: Gabungkan suara video dan musik
+        # volume=0.8 untuk musik agar tidak menutupi suara hujan
+        '-filter_complex', '[0:a]volume=1.0[a1];[1:a]volume=0.6[a2];[a1][a2]amix=inputs=2:duration=first[aout]',
+        
+        # Pengaturan Video (1080p)
+        '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2',
+        '-map', '0:v',                  # Ambil gambar dari video
+        '-map', '[aout]',               # Ambil suara hasil gabungan
+        
+        '-c:v', 'libx264',              
+        '-preset', 'faster',            
+        '-b:v', '4500k',                
+        '-maxrate', '5000k',
+        '-bufsize', '9000k',
         '-pix_fmt', 'yuv420p',
-        '-g', '60',                     # Keyframe (Wajib YouTube)
-        '-c:a', 'aac',                  # Audio codec
-        '-b:a', '128k',                 # Audio bitrate
+        '-g', '60',                     
+        
+        '-c:a', 'aac',                  
+        '-b:a', '192k',                 
         '-ar', '44100',
-        '-f', 'flv',                    # Format RTMP
+        
+        '-f', 'flv',                    
         f"rtmp://a.rtmp.youtube.com/live2/{STREAM_KEY}"
     ]
 
     try:
         subprocess.run(cmd, check=True)
-        print("[🚀] LIVE SELESAI DENGAN SUKSES!")
+        print("[🚀] LIVE SELESAI!")
     except Exception as e:
-        print(f"[-] Kesalahan Streaming: {e}")
+        print(f"[-] Terjadi kesalahan stream: {e}")
     finally:
-        if os.path.exists("live_input.mp4"): os.remove("live_input.mp4")
+        # Bersihkan file
+        for f in ["vid.mp4", "mus.mp3"]:
+            if os.path.exists(f): os.remove(f)
 
 if __name__ == "__main__":
     main()
