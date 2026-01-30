@@ -12,7 +12,7 @@ import google.generativeai as genai
 # --- KONFIGURASI ---
 TOKEN_B64 = os.environ.get('TOKEN_DATA_LIVE') or os.environ.get('TOKEN_DATA')
 SOURCE_ID = os.environ.get('SOURCE_LIVE_ID')    # Folder Video Hujan
-MUSIC_ID = os.environ.get('MUSIC_FOLDER_ID')    # Folder Musik MP3 (Baru)
+MUSIC_ID = os.environ.get('MUSIC_FOLDER_ID')    # Folder Musik MP3
 API_KEY = os.environ.get('GEMINI_API_KEY')
 STREAM_KEY = os.environ.get('YOUTUBE_STREAM_KEY')
 
@@ -41,20 +41,24 @@ def get_drive_service():
         print(f"Auth Error: {e}")
         return None
 
-def get_random_file(service, folder_id, mime_prefix):
-    """Mengambil satu file acak berdasarkan tipe (video atau audio)"""
-    q = f"'{folder_id}' in parents and mimeType contains '{mime_prefix}' and trashed=false"
+def get_multiple_random_music(service, folder_id, limit=8):
+    """Mengambil beberapa file musik acak untuk dijadikan playlist"""
+    q = f"'{folder_id}' in parents and mimeType contains 'audio' and trashed=false"
     results = service.files().list(q=q, fields="files(id, name)").execute()
     files = results.get('files', [])
     if not files:
-        return None
-    return random.choice(files)
+        return []
+    
+    # Ambil maksimal 'limit' lagu secara acak
+    sample_size = min(len(files), limit)
+    return random.sample(files, sample_size)
 
 def get_ai_metadata():
     model = genai.GenerativeModel('gemini-1.5-flash')
     prompt = (
-        "Buatkan metadata LIVE YouTube tentang suara hujan menenangkan yang dipadukan dengan musik piano/lofi. "
+        "Buatkan metadata LIVE YouTube tentang perpaduan suara hujan alami dan playlist musik relaksasi (lofi/piano). "
         "Target: tidur, belajar, atau meditasi. "
+        "Gunakan bahasa Indonesia yang estetik. "
         "Hasilkan HANYA JSON: {'title': '...', 'description': '...'}"
     )
     try:
@@ -63,57 +67,71 @@ def get_ai_metadata():
         return json.loads(clean_text)
     except:
         return {
-            "title": "Hujan Alami & Musik Relaksasi 🌧️🎹 Tidur Nyenyak & Fokus Belajar",
-            "description": "Perpaduan suara hujan dan musik untuk ketenangan Anda. #rain #lofi #meditation"
+            "title": "Playlist Hujan & Musik Relaksasi Malam 🌧️🎹 Tidur & Fokus",
+            "description": "Nikmati playlist musik pilihan dipadukan dengan suara hujan alami. #rain #lofi #relax"
         }
 
 def main():
-    print(f"=== MULAI LIVE STREAM HUJAN + MUSIK ({LIVE_DURATION_SEC//60} MENIT) ===")
+    print(f"=== MULAI LIVE STREAM PLAYLIST HUJAN + MUSIK ({LIVE_DURATION_SEC//60} MENIT) ===")
     validate_environment()
     drive = get_drive_service()
     if not drive: return
 
-    # 1. Pilih Video dan Musik secara acak
-    video_file = get_random_file(drive, SOURCE_ID, "video")
-    music_file = get_random_file(drive, MUSIC_ID, "audio")
+    # 1. Pilih 1 Video Hujan dan Beberapa Musik (Playlist)
+    video_q = f"'{SOURCE_ID}' in parents and mimeType contains 'video' and trashed=false"
+    video_files = drive.files().list(q=video_q, fields="files(id, name)").execute().get('files', [])
+    
+    music_files = get_multiple_random_music(drive, MUSIC_ID, limit=8)
 
-    if not video_file or not music_file:
-        print("[-] Gagal mengambil video atau musik dari Drive. Pastikan folder tidak kosong.")
+    if not video_files or not music_files:
+        print("[-] Gagal mengambil bahan. Pastikan folder Video dan Musik tidak kosong.")
         return
 
-    print(f"[*] Video: {video_file['name']}")
-    print(f"[*] Musik: {music_file['name']}")
+    selected_video = random.choice(video_files)
+    print(f"[*] Video Latar: {selected_video['name']}")
+    print(f"[*] Membuat Playlist dengan {len(music_files)} lagu acak.")
 
-    # 2. Ambil Metadata AI
+    # 2. Metadata AI
     meta = get_ai_metadata()
     print(f"[*] Judul: {meta['title']}")
 
     # 3. Download Bahan
-    print("[*] Mengunduh bahan...")
+    print("[*] Mendownload video...")
     with open("vid.mp4", "wb") as f:
-        f.write(drive.files().get_media(fileId=video_file['id']).execute())
-    with open("mus.mp3", "wb") as f:
-        f.write(drive.files().get_media(fileId=music_file['id']).execute())
+        f.write(drive.files().get_media(fileId=selected_video['id']).execute())
+    
+    # Download semua lagu dalam playlist
+    playlist_files = []
+    for i, m in enumerate(music_files):
+        filename = f"music_{i}.mp3"
+        print(f"    -> Mendownload lagu {i+1}: {m['name']}")
+        with open(filename, "wb") as f:
+            f.write(drive.files().get_media(fileId=m['id']).execute())
+        playlist_files.append(filename)
 
-    # 4. Stream HD dengan Mixing Audio (FFmpeg)
-    # amix=inputs=2 menggabungkan suara hujan (dari video) dan musik
-    print(f"[*] Memulai siaran HD dengan mixing audio...")
+    # Buat file daftar putar untuk FFmpeg
+    with open("playlist.txt", "w") as f:
+        for pf in playlist_files:
+            f.write(f"file '{pf}'\n")
+
+    # 4. Stream HD dengan Playlist Musik
+    print(f"[*] Memulai siaran dengan playlist musik yang berganti-ganti...")
     
     cmd = [
         'ffmpeg',
         '-re',                          
-        '-stream_loop', '-1', '-i', 'vid.mp4', # Input 0: Video (Loop)
-        '-stream_loop', '-1', '-i', 'mus.mp3', # Input 1: Musik (Loop)
+        '-stream_loop', '-1', '-i', 'vid.mp4', # Input 0: Video Hujan (Loop)
+        # Input 1: Gunakan concat demuxer untuk memutar playlist lagu
+        '-stream_loop', '-1', '-f', 'concat', '-safe', '0', '-i', 'playlist.txt',
+        
         '-t', str(LIVE_DURATION_SEC),   
         
-        # Filter Complex: Gabungkan suara video dan musik
-        # volume=0.8 untuk musik agar tidak menutupi suara hujan
-        '-filter_complex', '[0:a]volume=1.0[a1];[1:a]volume=0.6[a2];[a1][a2]amix=inputs=2:duration=first[aout]',
+        # Mixing Audio: Hujan (0.3), Musik Playlist (1.2)
+        '-filter_complex', '[0:a]volume=0.3[a1];[1:a]volume=1.2[a2];[a1][a2]amix=inputs=2:duration=first[aout]',
         
-        # Pengaturan Video (1080p)
         '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2',
-        '-map', '0:v',                  # Ambil gambar dari video
-        '-map', '[aout]',               # Ambil suara hasil gabungan
+        '-map', '0:v',                  
+        '-map', '[aout]',               
         
         '-c:v', 'libx264',              
         '-preset', 'faster',            
@@ -133,12 +151,13 @@ def main():
 
     try:
         subprocess.run(cmd, check=True)
-        print("[🚀] LIVE SELESAI!")
+        print("[🚀] LIVE STREAM BERHASIL SELESAI!")
     except Exception as e:
         print(f"[-] Terjadi kesalahan stream: {e}")
     finally:
-        # Bersihkan file
-        for f in ["vid.mp4", "mus.mp3"]:
+        # Pembersihan total
+        files_to_delete = ["vid.mp4", "playlist.txt"] + playlist_files
+        for f in files_to_delete:
             if os.path.exists(f): os.remove(f)
 
 if __name__ == "__main__":
