@@ -19,8 +19,8 @@ MUSIC_ID = os.environ.get('MUSIC_FOLDER_ID')
 API_KEY = os.environ.get('GEMINI_API_KEY')
 STREAM_KEY = os.environ.get('YOUTUBE_STREAM_KEY')
 
-# FAKTOR SLOW MOTION (Sesuaikan 1.2 - 1.5)
-SLOW_MOTION_FACTOR = 1.3
+# FAKTOR SLOW MOTION (Rekomendasi 1.2 agar tidak terlalu berat)
+SLOW_MOTION_FACTOR = 1.2
 LIVE_DURATION_SEC = random.randint(3300, 3600) 
 
 def validate_environment():
@@ -64,23 +64,22 @@ def get_ai_metadata(filenames):
     titles_str = ", ".join([f['name'] for f in filenames])
     prompt = (
         f"Video files: '{titles_str}'. Create an engaging international YouTube Live Title and Description. "
-        "The content includes multiple office activities and relaxing slow-motion vibes. "
-        "Return ONLY JSON: {'title': '...', 'description': '...'}"
+        "The content includes relaxing slow-motion office vibes. Return ONLY JSON: {'title': '...', 'description': '...'}"
     )
     try:
         res = model.generate_content(prompt)
         clean_text = res.text.replace('```json','').replace('```','').strip()
         return json.loads(clean_text)
     except:
-        return {"title": "Focus Session: Office Ambience & Relaxing Music 💻", "description": "Productive work session live."}
+        return {"title": "Lofi Office: Deep Work & Focus Session 💻", "description": "Productive live stream."}
 
 def main():
-    print(f"=== MULAI LIVE ANTI-MACET (OPTIMASI HEVC) ===")
+    print(f"=== MULAI LIVE SUPER OPTIMIZED (DURASI: {LIVE_DURATION_SEC//60} MENIT) ===")
     validate_environment()
     drive = get_drive_service()
     if not drive: return
 
-    # 1. Pilih Bahan
+    # 1. Pilih Bahan (3 Video dan 10 Musik)
     video_files = get_multiple_random_files(drive, SOURCE_ID, "video", limit=3)
     music_files = get_multiple_random_files(drive, MUSIC_ID, "audio", limit=10)
 
@@ -109,32 +108,39 @@ def main():
 
     audio_speed = max(0.5, 1.0 / SLOW_MOTION_FACTOR)
 
-    # 3. Stream Command (Super Lightweight)
-    print(f"[*] Menjalankan FFmpeg dengan optimasi CPU...")
+    # 3. Stream Command (Perbaikan Loop)
+    print(f"[*] Mengirim siaran dengan perbaikan looping...")
     cmd = [
         'ffmpeg', '-re',
-        '-fflags', '+genpts', 
+        '-fflags', '+genpts',
+        # Input 0: Video Playlist (Looping diaktifkan SEBELUM input)
+        '-stream_loop', '-1', 
         '-f', 'concat', '-safe', '0', '-i', 'video_playlist.txt',
-        '-stream_loop', '-1', '-f', 'concat', '-safe', '0', '-i', 'music_playlist.txt',
-        '-t', str(LIVE_DURATION_SEC),
+        # Input 1: Music Playlist (Looping diaktifkan SEBELUM input)
+        '-stream_loop', '-1', 
+        '-f', 'concat', '-safe', '0', '-i', 'music_playlist.txt',
+        
+        '-t', str(LIVE_DURATION_SEC), # Durasi Total Live
+        
         '-filter_complex', (
-            f'[0:v]scale=1280:720,setpts={SLOW_MOTION_FACTOR}*PTS,fps=30[vout]; '
-            f'[0:a]atempo={audio_speed},volume=0.3[a1]; '
+            f'[0:v]scale=1280:720,setpts={SLOW_MOTION_FACTOR}*PTS,fps=24[vout]; '
+            f'[0:a]atempo={audio_speed},volume=0.2[a1]; '
             f'[1:a]volume=1.2[a2]; '
             f'[a1][a2]amix=inputs=2:duration=first[aout]'
         ),
+        
         '-map', '[vout]', '-map', '[aout]',
         '-c:v', 'libx264', 
-        '-preset', 'ultrafast',         # Paling ringan untuk CPU
-        '-tune', 'zerolatency', 
-        '-threads', '0',                # Gunakan semua core CPU GitHub
-        '-b:v', '2000k',                # Turunkan bitrate agar lebih stabil
-        '-maxrate', '2500k', 
-        '-bufsize', '5000k', 
+        '-preset', 'ultrafast',
+        '-tune', 'zerolatency',
+        '-b:v', '1500k',
+        '-maxrate', '2000k', 
+        '-bufsize', '4000k', 
         '-pix_fmt', 'yuv420p', 
-        '-g', '60',
-        '-c:a', 'aac', '-b:a', '128k', '-ar', '44100',
-        '-max_muxing_queue_size', '1024', # Mencegah lag pada antrean buffer
+        '-g', '48',
+        '-c:a', 'aac', '-b:a', '96k',
+        '-ar', '44100',
+        '-max_muxing_queue_size', '2048',
         '-f', 'flv', f"rtmp://a.rtmp.youtube.com/live2/{STREAM_KEY}"
     ]
 
@@ -143,17 +149,13 @@ def main():
         for line in process.stdout:
             if "frame=" in line:
                 print(line.strip(), end='\r')
-            if "speed=" in line:
-                # Memastikan Anda bisa memantau speed di log
-                pass
         
         process.wait()
-        print("\n[🚀] LIVE BERHASIL DISELESAIKAN!")
+        print("\n[🚀] LIVE BERHASIL!")
 
     except Exception as e:
         print(f"\n[-] Terjadi kesalahan fatal: {e}")
     finally:
-        # Pembersihan file sampah
         all_temp = vid_list + mus_list + ["video_playlist.txt", "music_playlist.txt"]
         for temp in all_temp:
             if os.path.exists(temp): os.remove(temp)
