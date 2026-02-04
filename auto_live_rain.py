@@ -16,7 +16,7 @@ import google.generativeai as genai
 # --- KONFIGURASI ---
 TOKEN_B64 = os.environ.get('TOKEN_DATA_LIVE') or os.environ.get('TOKEN_DATA')
 SOURCE_ID = os.environ.get('SOURCE_LIVE_ID')
-MUSIC_ID = os.environ.get('MUSIC_LIVE_ID')
+MUSIC_ID = os.environ.get('MUSIC_FOLDER_ID')
 API_KEY = os.environ.get('GEMINI_API_KEY')
 STREAM_KEY = os.environ.get('YOUTUBE_STREAM_KEY')
 
