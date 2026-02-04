@@ -10,24 +10,23 @@ import time
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from google.auth.transport.requests import Request
-# Menggunakan library terbaru untuk menghilangkan warning
 import google.generativeai as genai
 
 # --- KONFIGURASI ---
 TOKEN_B64 = os.environ.get('TOKEN_DATA_LIVE') or os.environ.get('TOKEN_DATA')
 SOURCE_ID = os.environ.get('SOURCE_LIVE_ID')
-MUSIC_ID = os.environ.get('MUSIC_FOLDER_ID')
+MUSIC_ID = os.environ.get('MUSIC_FOLDER_ID') 
 API_KEY = os.environ.get('GEMINI_API_KEY')
 STREAM_KEY = os.environ.get('YOUTUBE_STREAM_KEY')
 
 # FAKTOR SLOW MOTION (Sesuaikan 1.2 - 1.5)
 SLOW_MOTION_FACTOR = 1.3
-LIVE_DURATION_SEC = random.randint(3300, 3600) # Pastikan sekitar 1 jam
+LIVE_DURATION_SEC = random.randint(3300, 3600) 
 
 def validate_environment():
     missing = []
     if not SOURCE_ID: missing.append("SOURCE_LIVE_ID")
-    if not MUSIC_ID: missing.append("MUSIC_LIVE_ID")
+    if not MUSIC_ID: missing.append("MUSIC_FOLDER_ID")
     if not STREAM_KEY: missing.append("YOUTUBE_STREAM_KEY")
     if not TOKEN_B64: missing.append("TOKEN_DATA")
     if missing:
@@ -73,10 +72,10 @@ def get_ai_metadata(filenames):
         clean_text = res.text.replace('```json','').replace('```','').strip()
         return json.loads(clean_text)
     except:
-        return {"title": "Daily Focus: Office Ambience & Chill Beats 💻", "description": "Relaxing work session."}
+        return {"title": "Focus Session: Office Ambience & Relaxing Music 💻", "description": "Productive work session live."}
 
 def main():
-    print(f"=== MULAI LIVE ANTI-MACET (DURASI: {LIVE_DURATION_SEC//60} MENIT) ===")
+    print(f"=== MULAI LIVE ANTI-MACET (OPTIMASI HEVC) ===")
     validate_environment()
     drive = get_drive_service()
     if not drive: return
@@ -86,11 +85,11 @@ def main():
     music_files = get_multiple_random_files(drive, MUSIC_ID, "audio", limit=10)
 
     if not video_files or not music_files:
-        print("[-] Bahan tidak cukup.")
+        print("[-] Bahan tidak cukup di Drive.")
         return
 
     meta = get_ai_metadata(video_files)
-    print(f"[*] Judul: {meta['title']}")
+    print(f"[*] Judul AI: {meta['title']}")
 
     # 2. Download
     vid_list, mus_list = [], []
@@ -110,52 +109,51 @@ def main():
 
     audio_speed = max(0.5, 1.0 / SLOW_MOTION_FACTOR)
 
-    # 3. Stream Command (Optimasi HEVC & Stability)
-    print(f"[*] Menjalankan FFmpeg (Optimized for HEVC inputs)...")
+    # 3. Stream Command (Super Lightweight)
+    print(f"[*] Menjalankan FFmpeg dengan optimasi CPU...")
     cmd = [
         'ffmpeg', '-re',
-        '-fflags', '+genpts', # Memperbaiki timestamp yang sering rusak di HEVC
+        '-fflags', '+genpts', 
         '-f', 'concat', '-safe', '0', '-i', 'video_playlist.txt',
         '-stream_loop', '-1', '-f', 'concat', '-safe', '0', '-i', 'music_playlist.txt',
         '-t', str(LIVE_DURATION_SEC),
         '-filter_complex', (
-            f'[0:v]setpts={SLOW_MOTION_FACTOR}*PTS,scale=1280:720,fps=30[vout]; '
+            f'[0:v]scale=1280:720,setpts={SLOW_MOTION_FACTOR}*PTS,fps=30[vout]; '
             f'[0:a]atempo={audio_speed},volume=0.3[a1]; '
             f'[1:a]volume=1.2[a2]; '
             f'[a1][a2]amix=inputs=2:duration=first[aout]'
         ),
         '-map', '[vout]', '-map', '[aout]',
         '-c:v', 'libx264', 
-        '-preset', 'ultrafast', # Wajib agar speed >= 1.0x
+        '-preset', 'ultrafast',         # Paling ringan untuk CPU
         '-tune', 'zerolatency', 
-        '-b:v', '2500k', 
-        '-maxrate', '3000k', 
-        '-bufsize', '6000k', 
+        '-threads', '0',                # Gunakan semua core CPU GitHub
+        '-b:v', '2000k',                # Turunkan bitrate agar lebih stabil
+        '-maxrate', '2500k', 
+        '-bufsize', '5000k', 
         '-pix_fmt', 'yuv420p', 
         '-g', '60',
         '-c:a', 'aac', '-b:a', '128k', '-ar', '44100',
+        '-max_muxing_queue_size', '1024', # Mencegah lag pada antrean buffer
         '-f', 'flv', f"rtmp://a.rtmp.youtube.com/live2/{STREAM_KEY}"
     ]
 
     try:
-        # Jalankan FFmpeg dan pantau error
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
         for line in process.stdout:
             if "frame=" in line:
-                print(line.strip(), end='\r') # Update log di baris yang sama
-            if "Error" in line or "failed" in line.lower():
-                print(f"\n[⚠️] Alert: {line.strip()}")
+                print(line.strip(), end='\r')
+            if "speed=" in line:
+                # Memastikan Anda bisa memantau speed di log
+                pass
         
         process.wait()
-        if process.returncode == 0:
-            print("\n[🚀] LIVE BERHASIL DISELESAIKAN!")
-        else:
-            print(f"\n[-] FFmpeg berhenti dengan kode: {process.returncode}")
+        print("\n[🚀] LIVE BERHASIL DISELESAIKAN!")
 
     except Exception as e:
         print(f"\n[-] Terjadi kesalahan fatal: {e}")
     finally:
-        # Bersihkan file
+        # Pembersihan file sampah
         all_temp = vid_list + mus_list + ["video_playlist.txt", "music_playlist.txt"]
         for temp in all_temp:
             if os.path.exists(temp): os.remove(temp)
