@@ -17,24 +17,41 @@ TARGET_FOLDER_ID = os.environ.get('UPLOTAN_FOLDER_ID')
 
 MAX_DURATION = 15 
 
-# --- DAFTAR KATA-KATA OTOMATIS (Bisa Anda Tambah/Ubah) ---
+# --- DAFTAR KATA-KATA OTOMATIS (Sesuai ide_tulisan_shorts.md) ---
 LIST_TEXT_SHORTS = [
+    # Kategori POV
     "POV: Menemukan spot kerja paling tenang di kantor.",
     "POV: Kamu butuh 15 detik untuk bernapas.",
     "POV: Hujan, kopi, dan pekerjaan yang belum selesai.",
     "POV: Menghilang sejenak dari keramaian dunia.",
+    "POV: Menikmati kesendirian di tengah hiruk pikuk.",
+    
+    # Kategori Hook (Pancingan)
     "Tonton sampai akhir: Ada yang tenang di menit terakhir.",
     "Coba dengerin pakai earphone... 🎧",
     "Rahasia tetap tenang di bawah tekanan.",
     "Definisi 'Healing' yang sebenarnya.",
+    "Pernah gak ngerasa se-damai ini?",
+    
+    # Kategori Quotes & Afirmasi
     "Istirahatlah, kamu sudah melakukan yang terbaik hari ini.",
     "Pelan-pelan saja, semua akan selesai pada waktunya.",
     "Jangan lupa bahagia di sela-sela sibukmu.",
     "Fokus pada proses, bukan hanya hasil.",
+    "Satu langkah kecil lebih baik daripada diam.",
+    
+    # Kategori Interaksi
+    "Absen yuk! Kota mana yang lagi hujan sekarang? 🌧️",
+    "Pilih mana: Kerja di kantor atau WFH?",
+    "Skala 1-10, seberapa capek kamu hari ini?",
+    "Tulis 1 keinginanmu yang ingin dicapai bulan ini.",
+    
+    # Kategori Estetik
     "Today's Mood: Relaxing.",
     "Current State: Focusing.",
     "Digital Detox: 15 Seconds.",
-    "Office Therapy."
+    "Office Therapy.",
+    "Quiet Mind, Busy Hands."
 ]
 
 def get_drive_service():
@@ -67,18 +84,11 @@ def download_random_file(service, folder_id, mime_filter, out_name):
 def render_with_ffmpeg(v_in, a_in, v_out, text_overlay):
     print(f"[*] Memproses Video dengan Teks: '{text_overlay}'")
     
-    # Pilih durasi musik (audio speed)
-    audio_speed = 1.0
-    
-    # Filter Complex:
-    # 1. Ambil 15 detik pertama (trim)
-    # 2. Crop ke 9:16 (Vertikal)
-    # 3. Tambahkan Teks di Tengah (Safe Zone)
-    # 4. Mix Audio
-    
+    # Desain Teks: 
+    # Font Putih, Ukuran 45, Di tengah layar, Dengan bayangan hitam (Shadow)
     text_filter = (
         f"drawtext=text='{text_overlay}':fontcolor=white:fontsize=45:"
-        f"x=(w-text_w)/2:y=(h-text_h)/2-100:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
+        f"x=(w-text_w)/2:y=(h-text_h)/2-100:fontfile=/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf:"
         f"shadowcolor=black@0.7:shadowx=3:shadowy=3"
     )
 
@@ -103,7 +113,7 @@ def render_with_ffmpeg(v_in, a_in, v_out, text_overlay):
         return False
 
 def main():
-    print("=== ROBOT RENDER SHORTS OTOMATIS (VERSI TEKS) ===")
+    print("=== ROBOT RENDER SHORTS OTOMATIS (VERSI TEKS BERAGAM) ===")
     service = get_drive_service()
     if not service: return
 
@@ -112,10 +122,10 @@ def main():
     download_random_file(service, MUSIC_FOLDER_ID, "audio", "raw_a.mp3")
 
     if not v_name:
-        print("[-] Bahan tidak ditemukan.")
+        print("[-] Bahan tidak ditemukan di folder Drive.")
         return
 
-    # 2. Pilih Teks Acak dari Daftar
+    # 2. Pilih Teks Acak dari Daftar yang Sudah Diperluas
     selected_text = random.choice(LIST_TEXT_SHORTS)
     
     # 3. Render
@@ -131,7 +141,7 @@ def main():
         service.files().create(body=file_metadata, media_body=media, fields='id').execute()
         print("[🚀] SELESAI!")
     
-    # Bersihkan
+    # Bersihkan file sampah di server GitHub
     for f in ["raw_v.mp4", "raw_a.mp3", output_filename]:
         if os.path.exists(f): os.remove(f)
 
