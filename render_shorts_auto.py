@@ -6,7 +6,6 @@ import io
 import sys
 import subprocess
 import textwrap
-import json
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 from google.auth.transport.requests import Request
@@ -55,16 +54,11 @@ def download_file(service, file_id, out_name):
             _, done = downloader.next_chunk()
 
 def get_video_duration(file_path):
-    """Mendapatkan durasi video menggunakan ffprobe"""
     try:
-        cmd = [
-            'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-            '-of', 'default=noprint_wrappers=1:nokey=1', file_path
-        ]
+        cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', file_path]
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         return float(result.stdout)
-    except:
-        return 0
+    except: return 0
 
 def get_all_files(service, folder_id, mime_type):
     q = f"'{folder_id}' in parents and mimeType contains '{mime_type}' and trashed=false"
@@ -72,16 +66,18 @@ def get_all_files(service, folder_id, mime_type):
     return res.get('files', [])
 
 def render_with_ffmpeg(v_in, a_in, v_out, text_overlay, start_time):
-    wrapped_text = "\n".join(textwrap.wrap(text_overlay, width=20))
-    wrapped_text = wrapped_text.replace("'", "'\\\\\\''")
+    # Auto-wrap teks (memotong baris agar tidak melebar keluar layar)
+    wrapped_text = "\n".join(textwrap.wrap(text_overlay, width=18))
+    wrapped_text = wrapped_text.replace("'", "'\\\\\\''") # Escape untuk FFmpeg
     
     print(f"[*] Merender dari detik ke-{start_time:.2f} dengan teks: {text_overlay}")
     
+    # Filter Teks: Perbaikan (Menghapus 'align=center' yang menyebabkan error)
+    # x=(w-text_w)/2:y=(h-text_h)/2 tetap membuat teks berada di tengah video
     text_filter = (
         f"drawtext=text='{wrapped_text}':fontcolor=white:fontsize=80:"
         f"x=(w-text_w)/2:y=(h-text_h)/2:fontfile=/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf:"
-        f"box=1:boxcolor=black@0.5:boxborderw=30:"
-        f"line_spacing=15:align=center:"
+        f"box=1:boxcolor=black@0.5:boxborderw=30:line_spacing=15:"
         f"shadowcolor=black@0.9:shadowx=5:shadowy=5"
     )
 
@@ -106,7 +102,7 @@ def render_with_ffmpeg(v_in, a_in, v_out, text_overlay, start_time):
         return False
 
 def main():
-    print("=== ROBOT RENDER SHORTS (FULL RANDOMIZED) ===")
+    print("=== ROBOT RENDER SHORTS (FULL RANDOMIZED - FIXED) ===")
     service = get_drive_service()
     if not service: return
 
@@ -123,7 +119,6 @@ def main():
         v_id, v_name = f_info['id'], f_info['name']
         print(f"\n[▶] MEMPROSES: {v_name}")
 
-        # 1. Download Video
         download_file(service, v_id, "temp_v.mp4")
         duration = get_video_duration("temp_v.mp4")
         
@@ -132,23 +127,25 @@ def main():
         if duration > MAX_DURATION:
             start_t = random.uniform(0, duration - MAX_DURATION)
 
-        # 2. Pilih & Download Musik Acak
+        # Ambil musik acak
         m_info = random.choice(music_files)
         download_file(service, m_info['id'], "temp_a.mp3")
 
-        # 3. Pilih Teks Acak & Render
+        # Pilih Teks Acak & Render
         selected_text = random.choice(LIST_TEXT_SHORTS)
         output_name = f"Shorts_{v_name.replace(' ', '_')}_{random.randint(100,999)}.mp4"
         
         if render_with_ffmpeg("temp_v.mp4", "temp_a.mp3", output_name, selected_text, start_t):
-            # 4. Upload
-            print(f"[*] Mengunggah hasil ke Drive...")
-            meta = {'name': output_name, 'parents': [TARGET_FOLDER_ID.strip()]}
-            media = MediaFileUpload(output_name, mimetype='video/mp4', resumable=True)
-            service.files().create(body=meta, media_body=media).execute()
-            print(f"[✅] BERHASIL!")
+            print(f"[*] Mengunggah hasil ke Drive (Folder ID: {TARGET_FOLDER_ID})...")
+            try:
+                meta = {'name': output_name, 'parents': [TARGET_FOLDER_ID.strip()]}
+                media = MediaFileUpload(output_name, mimetype='video/mp4', resumable=True)
+                service.files().create(body=meta, media_body=media).execute()
+                print(f"[✅] BERHASIL!")
+            except Exception as e:
+                print(f"⛔ GAGAL UPLOAD: {e}")
 
-        # Bersihkan file sementara
+        # Bersihkan file sampah
         for tmp in ["temp_v.mp4", "temp_a.mp3", output_name]:
             if os.path.exists(tmp): os.remove(tmp)
 
