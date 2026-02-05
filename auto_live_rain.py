@@ -19,7 +19,6 @@ MUSIC_ID = os.environ.get('MUSIC_FOLDER_ID')
 API_KEY = os.environ.get('GEMINI_API_KEY')
 STREAM_KEY = os.environ.get('YOUTUBE_STREAM_KEY')
 
-# FAKTOR SLOW MOTION (Rekomendasi 1.2 agar tidak terlalu berat)
 SLOW_MOTION_FACTOR = 1.2
 LIVE_DURATION_SEC = random.randint(3300, 3600) 
 
@@ -30,7 +29,7 @@ def validate_environment():
     if not STREAM_KEY: missing.append("YOUTUBE_STREAM_KEY")
     if not TOKEN_B64: missing.append("TOKEN_DATA")
     if missing:
-        print(f"⛔ ERROR: Kunci rahasia belum lengkap: {', '.join(missing)}")
+        print(f"⛔ ERROR: Secret belum lengkap: {', '.join(missing)}")
         sys.exit(1)
     genai.configure(api_key=API_KEY)
 
@@ -40,57 +39,34 @@ def get_drive_service():
         if creds.expired and creds.refresh_token:
             creds.refresh(Request())
         return build('drive', 'v3', credentials=creds)
-    except Exception as e:
-        print(f"Auth Error: {e}")
-        return None
+    except: return None
 
 def download_file(service, file_id, output_name):
     request = service.files().get_media(fileId=file_id)
     with io.FileIO(output_name, 'wb') as fh:
         downloader = MediaIoBaseDownload(fh, request)
         done = False
-        while not done:
-            _, done = downloader.next_chunk()
+        while not done: _, done = downloader.next_chunk()
 
 def get_multiple_random_files(service, folder_id, mime_type, limit=5):
     q = f"'{folder_id}' in parents and mimeType contains '{mime_type}' and trashed=false"
-    results = service.files().list(q=q, fields="files(id, name)").execute()
-    files = results.get('files', [])
+    res = service.files().list(q=q, fields="files(id, name)").execute()
+    files = res.get('files', [])
     if not files: return []
     return random.sample(files, min(len(files), limit))
 
-def get_ai_metadata(filenames):
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    titles_str = ", ".join([f['name'] for f in filenames])
-    prompt = (
-        f"Video files: '{titles_str}'. Create an engaging international YouTube Live Title and Description. "
-        "The content includes relaxing slow-motion office vibes. Return ONLY JSON: {'title': '...', 'description': '...'}"
-    )
-    try:
-        res = model.generate_content(prompt)
-        clean_text = res.text.replace('```json','').replace('```','').strip()
-        return json.loads(clean_text)
-    except:
-        return {"title": "Lofi Office: Deep Work & Focus Session 💻", "description": "Productive live stream."}
-
 def main():
-    print(f"=== MULAI LIVE SUPER OPTIMIZED (DURASI: {LIVE_DURATION_SEC//60} MENIT) ===")
+    print(f"=== MULAI LIVE SYNC ({LIVE_DURATION_SEC//60} MENIT) ===")
     validate_environment()
     drive = get_drive_service()
     if not drive: return
 
-    # 1. Pilih Bahan (3 Video dan 10 Musik)
+    # 1. Pilih Bahan
     video_files = get_multiple_random_files(drive, SOURCE_ID, "video", limit=3)
     music_files = get_multiple_random_files(drive, MUSIC_ID, "audio", limit=10)
+    if not video_files or not music_files: return
 
-    if not video_files or not music_files:
-        print("[-] Bahan tidak cukup di Drive.")
-        return
-
-    meta = get_ai_metadata(video_files)
-    print(f"[*] Judul AI: {meta['title']}")
-
-    # 2. Download
+    # 2. Download & Buat Playlist
     vid_list, mus_list = [], []
     for i, v in enumerate(video_files):
         vname = f"v_{i}.mp4"
@@ -108,57 +84,49 @@ def main():
 
     audio_speed = max(0.5, 1.0 / SLOW_MOTION_FACTOR)
 
-    # 3. Stream Command (Perbaikan Loop)
-    print(f"[*] Mengirim siaran dengan perbaikan looping...")
+    # 3. Stream Command (Fokus pada Sinkronisasi Timestamp)
+    print(f"[*] Mengirim siaran... (Memaksa sinkronisasi gambar)")
     cmd = [
-        'ffmpeg', '-re',
-        '-fflags', '+genpts',
-        # Input 0: Video Playlist (Looping diaktifkan SEBELUM input)
-        '-stream_loop', '-1', 
-        '-f', 'concat', '-safe', '0', '-i', 'video_playlist.txt',
-        # Input 1: Music Playlist (Looping diaktifkan SEBELUM input)
-        '-stream_loop', '-1', 
-        '-f', 'concat', '-safe', '0', '-i', 'music_playlist.txt',
+        'ffmpeg', 
+        '-re',                          # Baca input sesuai durasi asli
+        '-fflags', '+genpts+igndts',    # Paksa buat ulang timestamp agar tidak macet
+        '-avoid_negative_ts', 'make_zero',
         
-        '-t', str(LIVE_DURATION_SEC), # Durasi Total Live
+        '-stream_loop', '-1', '-f', 'concat', '-safe', '0', '-i', 'video_playlist.txt',
+        '-stream_loop', '-1', '-f', 'concat', '-safe', '0', '-i', 'music_playlist.txt',
+        
+        '-t', str(LIVE_DURATION_SEC),
         
         '-filter_complex', (
-            f'[0:v]scale=1280:720,setpts={SLOW_MOTION_FACTOR}*PTS,fps=24[vout]; '
-            f'[0:a]atempo={audio_speed},volume=0.2[a1]; '
+            f'[0:v]scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setpts={SLOW_MOTION_FACTOR}*PTS,fps=30[vout]; '
+            f'[0:a]atempo={audio_speed},volume=0.3[a1]; '
             f'[1:a]volume=1.2[a2]; '
             f'[a1][a2]amix=inputs=2:duration=first[aout]'
         ),
         
         '-map', '[vout]', '-map', '[aout]',
-        '-c:v', 'libx264', 
-        '-preset', 'ultrafast',
-        '-tune', 'zerolatency',
-        '-b:v', '1500k',
-        '-maxrate', '2000k', 
-        '-bufsize', '4000k', 
+        
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+        '-b:v', '2000k', '-maxrate', '2000k', '-bufsize', '4000k',
         '-pix_fmt', 'yuv420p', 
-        '-g', '48',
-        '-c:a', 'aac', '-b:a', '96k',
-        '-ar', '44100',
-        '-max_muxing_queue_size', '2048',
+        '-g', '60',                     # Keyframe setiap 2 detik (Wajib YouTube)
+        '-r', '30',                     # Paksa frame rate output konstan
+        
+        '-c:a', 'aac', '-b:a', '128k', '-ar', '44100',
         '-f', 'flv', f"rtmp://a.rtmp.youtube.com/live2/{STREAM_KEY}"
     ]
 
     try:
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
         for line in process.stdout:
-            if "frame=" in line:
-                print(line.strip(), end='\r')
-        
+            if "frame=" in line: print(line.strip(), end='\r')
         process.wait()
-        print("\n[🚀] LIVE BERHASIL!")
-
+        print("\n[🚀] LIVE SELESAI!")
     except Exception as e:
-        print(f"\n[-] Terjadi kesalahan fatal: {e}")
+        print(f"\n[-] Error: {e}")
     finally:
-        all_temp = vid_list + mus_list + ["video_playlist.txt", "music_playlist.txt"]
-        for temp in all_temp:
-            if os.path.exists(temp): os.remove(temp)
+        for f in vid_list + mus_list + ["video_playlist.txt", "music_playlist.txt"]:
+            if os.path.exists(f): os.remove(f)
 
 if __name__ == "__main__":
     main()
