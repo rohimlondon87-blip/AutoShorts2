@@ -4,7 +4,7 @@ on:
   schedule:
     # 18:00 UTC = 02:00 WITA
     - cron: '0 18 * * *'
-  workflow_dispatch:
+  workflow_dispatch:      # Tombol manual
 
 jobs:
   render_process:
@@ -30,4 +30,5 @@ jobs:
           SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
           MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
           UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
+          PROCESSED_FOLDER_ID: ${{ secrets.PROCESSED_FOLDER_ID }}
         run: python render_shorts_auto.py
