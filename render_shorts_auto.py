@@ -74,12 +74,17 @@ def move_to_archive(service, file_id, source_folder, target_folder):
     ).execute()
 
 def render_with_ffmpeg(v_in, a_in, v_out, text_overlay):
-    print(f"[*] Rendering: {text_overlay}")
+    print(f"[*] Rendering Teks Besar: {text_overlay}")
     
+    # Perbaikan Filter Teks:
+    # fontsize=90 (Sangat besar)
+    # box=1 (Menambahkan kotak latar belakang agar teks tajam)
+    # y=h/2 (Tepat di tengah vertikal)
     text_filter = (
-        f"drawtext=text='{text_overlay}':fontcolor=white:fontsize=45:"
-        f"x=(w-text_w)/2:y=(h-text_h)/2-100:fontfile=/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf:"
-        f"shadowcolor=black@0.7:shadowx=3:shadowy=3"
+        f"drawtext=text='{text_overlay}':fontcolor=white:fontsize=90:"
+        f"x=(w-text_w)/2:y=(h-text_h)/2:fontfile=/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf:"
+        f"box=1:boxcolor=black@0.4:boxborderw=20:" # Kotak hitam transparan agar tulisan tajam
+        f"shadowcolor=black@0.9:shadowx=5:shadowy=5"
     )
 
     cmd = [
@@ -103,56 +108,39 @@ def render_with_ffmpeg(v_in, a_in, v_out, text_overlay):
         return False
 
 def main():
-    print("=== ROBOT RENDER SHORTS MASSAL ===")
+    print("=== ROBOT RENDER SHORTS MASSAL (TEKS BESAR & TAJAM) ===")
     service = get_drive_service()
     if not service: return
 
-    # 1. Ambil SEMUA Video dari Folder Bahan Live
     videos = get_all_videos(service, LIVE_FOLDER_ID)
-    
     if not videos:
-        print("[-] Tidak ada video di folder Bahan Live.")
+        print("[-] Folder sumber kosong.")
         return
 
-    print(f"[*] Menemukan {len(videos)} video. Memulai proses antrean...")
-
     for f_info in videos:
-        v_id = f_info['id']
-        v_name = f_info['name']
-        print(f"\n[▶] Memproses File: {v_name}")
+        v_id, v_name = f_info['id'], f_info['name']
+        print(f"\n[▶] Memproses: {v_name}")
 
-        # Download Video Tersebut
         download_file(service, v_id, "temp_v.mp4")
-
-        # Pilih Musik Acak
         m_info = get_random_music(service, MUSIC_FOLDER_ID)
-        if m_info:
-            download_file(service, m_info['id'], "temp_a.mp3")
-        else:
-            print("[-] Musik tidak ditemukan, melewati file ini.")
-            continue
+        if m_info: download_file(service, m_info['id'], "temp_a.mp3")
+        else: continue
 
-        # Pilih Teks & Render
         selected_text = random.choice(LIST_TEXT_SHORTS)
-        output_name = f"Shorts_{v_name.split('.')[0]}_{random.randint(100,999)}.mp4"
+        output_name = f"Shorts_HD_{random.randint(100,999)}.mp4"
         
         if render_with_ffmpeg("temp_v.mp4", "temp_a.mp3", output_name, selected_text):
-            # Upload Hasil ke Folder Uplotan
-            print(f"[*] Mengunggah ke Folder Uplotan...")
+            # Upload
             meta = {'name': output_name, 'parents': [TARGET_FOLDER_ID]}
             media = MediaFileUpload(output_name, mimetype='video/mp4', resumable=True)
             service.files().create(body=meta, media_body=media).execute()
 
-            # Pindahkan Video Mentah ke Arsip (Agar besok tidak di-render lagi)
-            print("[*] Memindahkan file mentah ke arsip...")
+            # Arsip
             move_to_archive(service, v_id, LIVE_FOLDER_ID, ARCHIVE_FOLDER_ID)
-            print(f"[✅] Selesai memproses {v_name}")
+            print(f"[✅] Selesai: {v_name}")
         
-        # Bersihkan file sementara untuk antrean berikutnya
         for tmp in ["temp_v.mp4", "temp_a.mp3", output_name]:
             if os.path.exists(tmp): os.remove(tmp)
-
-    print("\n[🚀] SEMUA ANTREAN BERHASIL DIPROSES!")
 
 if __name__ == "__main__":
     main()
