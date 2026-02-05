@@ -5,6 +5,7 @@ import random
 import io
 import sys
 import subprocess
+import textwrap
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 from google.auth.transport.requests import Request
@@ -32,7 +33,8 @@ LIST_TEXT_SHORTS = [
     "Pelan-pelan saja, semua akan selesai pada waktunya.",
     "Jangan lupa bahagia di sela-sela sibukmu.",
     "Today's Mood: Relaxing.",
-    "Office Therapy."
+    "Office Therapy.",
+    "POV: Menikmati kesendirian di tengah hiruk pikuk kota."
 ]
 
 def get_drive_service():
@@ -74,16 +76,23 @@ def move_to_archive(service, file_id, source_folder, target_folder):
     ).execute()
 
 def render_with_ffmpeg(v_in, a_in, v_out, text_overlay):
-    print(f"[*] Rendering Teks Besar: {text_overlay}")
+    # LOGIKA AUTO-WRAP: Membagi teks menjadi baris baru setiap ~20 karakter
+    # FFmpeg membutuhkan karakter '\n' diubah menjadi '\\\n' atau menggunakan filter khusus
+    wrapped_text = "\n".join(textwrap.wrap(text_overlay, width=20))
+    # Escape single quotes for FFmpeg
+    wrapped_text = wrapped_text.replace("'", "'\\\\\\''")
+    
+    print(f"[*] Rendering Teks (Auto-Wrap): \n{wrapped_text}")
     
     # Perbaikan Filter Teks:
-    # fontsize=90 (Sangat besar)
-    # box=1 (Menambahkan kotak latar belakang agar teks tajam)
-    # y=h/2 (Tepat di tengah vertikal)
+    # fontsize=80 (Ukuran besar tapi aman untuk multi-baris)
+    # line_spacing=15 (Jarak antar baris)
+    # text_align=center (Teks rata tengah)
     text_filter = (
-        f"drawtext=text='{text_overlay}':fontcolor=white:fontsize=90:"
+        f"drawtext=text='{wrapped_text}':fontcolor=white:fontsize=80:"
         f"x=(w-text_w)/2:y=(h-text_h)/2:fontfile=/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf:"
-        f"box=1:boxcolor=black@0.4:boxborderw=20:" # Kotak hitam transparan agar tulisan tajam
+        f"box=1:boxcolor=black@0.5:boxborderw=30:"
+        f"line_spacing=15:align=center:"
         f"shadowcolor=black@0.9:shadowx=5:shadowy=5"
     )
 
@@ -108,7 +117,7 @@ def render_with_ffmpeg(v_in, a_in, v_out, text_overlay):
         return False
 
 def main():
-    print("=== ROBOT RENDER SHORTS MASSAL (TEKS BESAR & TAJAM) ===")
+    print("=== ROBOT RENDER SHORTS MASSAL (AUTO-WRAP TEXT) ===")
     service = get_drive_service()
     if not service: return
 
@@ -127,7 +136,7 @@ def main():
         else: continue
 
         selected_text = random.choice(LIST_TEXT_SHORTS)
-        output_name = f"Shorts_HD_{random.randint(100,999)}.mp4"
+        output_name = f"Shorts_AutoWrap_{random.randint(100,999)}.mp4"
         
         if render_with_ffmpeg("temp_v.mp4", "temp_a.mp3", output_name, selected_text):
             # Upload
