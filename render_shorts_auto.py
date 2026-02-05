@@ -25,6 +25,7 @@ LIST_TEXT_SHORTS = [
     "POV: Kamu butuh 15 detik untuk bernapas.",
     "POV: Hujan, kopi, dan pekerjaan yang belum selesai.",
     "POV: Menghilang sejenak dari keramaian dunia.",
+    "POV: Menikmati kesendirian di tengah kota.",
     "Tonton sampai akhir: Ada yang tenang di menit terakhir.",
     "Coba dengerin pakai earphone... 🎧",
     "Rahasia tetap tenang di bawah tekanan.",
@@ -33,30 +34,8 @@ LIST_TEXT_SHORTS = [
     "Pelan-pelan saja, semua akan selesai pada waktunya.",
     "Jangan lupa bahagia di sela-sela sibukmu.",
     "Today's Mood: Relaxing.",
-    "Office Therapy.",
-    "POV: Menikmati kesendirian di tengah hiruk pikuk kota."
+    "Office Therapy."
 ]
-
-def validate_paths():
-    """Memastikan semua ID folder dari GitHub Secrets terbaca"""
-    print("[*] Memvalidasi Kunci Folder...")
-    check = {
-        "SOURCE_LIVE_ID": LIVE_FOLDER_ID,
-        "MUSIC_FOLDER_ID": MUSIC_FOLDER_ID,
-        "UPLOTAN_FOLDER_ID": TARGET_FOLDER_ID,
-        "PROCESSED_FOLDER_ID": ARCHIVE_FOLDER_ID
-    }
-    error_found = False
-    for key, value in check.items():
-        if not value or value == "None":
-            print(f"⛔ ERROR: GitHub Secret '{key}' belum diisi atau tidak terbaca!")
-            error_found = True
-        else:
-            print(f"✅ {key}: Terdeteksi")
-    
-    if error_found:
-        print("\nSilakan cek tab Settings > Secrets di GitHub Anda.")
-        sys.exit(1)
 
 def get_drive_service():
     try:
@@ -104,8 +83,7 @@ def render_with_ffmpeg(v_in, a_in, v_out, text_overlay):
     wrapped_text = "\n".join(textwrap.wrap(text_overlay, width=20))
     wrapped_text = wrapped_text.replace("'", "'\\\\\\''")
     
-    print(f"[*] Rendering Teks: \n{wrapped_text}")
-    
+    # Filter Teks: Putih, Font 80, Background Box Hitam, Center
     text_filter = (
         f"drawtext=text='{wrapped_text}':fontcolor=white:fontsize=80:"
         f"x=(w-text_w)/2:y=(h-text_h)/2:fontfile=/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf:"
@@ -130,23 +108,22 @@ def render_with_ffmpeg(v_in, a_in, v_out, text_overlay):
     try:
         subprocess.run(cmd, check=True)
         return True
-    except Exception as e:
-        print(f"[-] Gagal Render FFmpeg: {e}")
+    except:
         return False
 
 def main():
-    print("=== ROBOT RENDER SHORTS MASSAL (VERSI DEBUG) ===")
-    validate_paths() # Langkah 0: Cek ID Folder
-    
+    print("=== ROBOT RENDER SHORTS MASSAL (RE-VERIFIED) ===")
     service = get_drive_service()
     if not service: return
 
+    # Verifikasi ID Folder
+    target_id = TARGET_FOLDER_ID.strip() if TARGET_FOLDER_ID else None
+    print(f"[*] Target Folder ID: {target_id}")
+
     videos = get_all_videos(service, LIVE_FOLDER_ID)
     if not videos:
-        print("[-] Folder sumber 'Bahan Live' kosong. Tidak ada yang diproses.")
+        print("[-] Folder sumber kosong.")
         return
-
-    print(f"[*] Menemukan {len(videos)} video.")
 
     for f_info in videos:
         v_id, v_name = f_info['id'], f_info['name']
@@ -161,27 +138,27 @@ def main():
         output_name = f"Shorts_{v_name.split('.')[0]}_{random.randint(100,999)}.mp4"
         
         if render_with_ffmpeg("temp_v.mp4", "temp_a.mp3", output_name, selected_text):
-            # UPLOAD DENGAN METADATA PARENTS YANG BENAR
-            print(f"[*] Mengunggah ke Drive (ID Folder: {TARGET_FOLDER_ID})...")
+            # Upload ke Drive
+            print(f"[*] Sedang Mengunggah '{output_name}' ke Drive...")
+            meta = {
+                'name': output_name,
+                'parents': [target_id]
+            }
+            media = MediaFileUpload(output_name, mimetype='video/mp4', resumable=True)
             try:
-                meta = {
-                    'name': output_name,
-                    'parents': [TARGET_FOLDER_ID] # Memaksa masuk ke folder Uplotan
-                }
-                media = MediaFileUpload(output_name, mimetype='video/mp4', resumable=True)
-                file_uploaded = service.files().create(body=meta, media_body=media, fields='id').execute()
-                print(f"[✅] BERHASIL! File ID di Drive: {file_uploaded.get('id')}")
-
-                # Pindah ke arsip agar tidak diproses lagi
+                uploaded_file = service.files().create(body=meta, media_body=media, fields='id, name').execute()
+                print(f"[✅] UPLOAD SUKSES! ID File: {uploaded_file.get('id')}")
+                
+                # Pindah ke arsip
                 move_to_archive(service, v_id, LIVE_FOLDER_ID, ARCHIVE_FOLDER_ID)
-            except Exception as e:
-                print(f"⛔ GAGAL UPLOAD: {e}")
+            except Exception as upload_err:
+                print(f"⛔ GAGAL UPLOAD: {upload_err}")
 
-        # Bersihkan file sampah
+        # Bersihkan
         for tmp in ["temp_v.mp4", "temp_a.mp3", output_name]:
             if os.path.exists(tmp): os.remove(tmp)
 
-    print("\n[🚀] SELESAI!")
+    print("\n[🚀] SEMUA PROSES SELESAI!")
 
 if __name__ == "__main__":
     main()
