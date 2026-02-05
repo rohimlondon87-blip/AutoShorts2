@@ -1,1 +1,1 @@
-google-api-python-clientgoogle-auth-oauthlibgoogle-auth-httplib2google-generativeaimoviepy==1.0.3
+google-api-python-clientgoogle-auth-oauthlibgoogle-auth-httplib2google-generativeaimoviepy==1.0.3opencv-pythonPillownumpy
