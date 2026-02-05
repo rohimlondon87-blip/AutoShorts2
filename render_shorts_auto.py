@@ -11,47 +11,28 @@ from google.auth.transport.requests import Request
 
 # --- KONFIGURASI DARI GITHUB SECRETS ---
 TOKEN_DATA = os.environ.get('TOKEN_DATA')
-LIVE_FOLDER_ID = os.environ.get('SOURCE_LIVE_ID')
-MUSIC_FOLDER_ID = os.environ.get('MUSIC_FOLDER_ID')
-TARGET_FOLDER_ID = os.environ.get('UPLOTAN_FOLDER_ID')
+LIVE_FOLDER_ID = os.environ.get('SOURCE_LIVE_ID')      # Folder Bahan Live
+MUSIC_FOLDER_ID = os.environ.get('MUSIC_FOLDER_ID')   # Folder Bahan Music
+TARGET_FOLDER_ID = os.environ.get('UPLOTAN_FOLDER_ID') # Folder Hasil (Uplotan)
+ARCHIVE_FOLDER_ID = os.environ.get('PROCESSED_FOLDER_ID') # Folder Arsip Selesai
 
 MAX_DURATION = 15 
 
-# --- DAFTAR KATA-KATA OTOMATIS (Sesuai ide_tulisan_shorts.md) ---
+# --- DAFTAR KATA-KATA OTOMATIS ---
 LIST_TEXT_SHORTS = [
-    # Kategori POV
     "POV: Menemukan spot kerja paling tenang di kantor.",
     "POV: Kamu butuh 15 detik untuk bernapas.",
     "POV: Hujan, kopi, dan pekerjaan yang belum selesai.",
     "POV: Menghilang sejenak dari keramaian dunia.",
-    "POV: Menikmati kesendirian di tengah hiruk pikuk.",
-    
-    # Kategori Hook (Pancingan)
     "Tonton sampai akhir: Ada yang tenang di menit terakhir.",
     "Coba dengerin pakai earphone... 🎧",
     "Rahasia tetap tenang di bawah tekanan.",
     "Definisi 'Healing' yang sebenarnya.",
-    "Pernah gak ngerasa se-damai ini?",
-    
-    # Kategori Quotes & Afirmasi
     "Istirahatlah, kamu sudah melakukan yang terbaik hari ini.",
     "Pelan-pelan saja, semua akan selesai pada waktunya.",
     "Jangan lupa bahagia di sela-sela sibukmu.",
-    "Fokus pada proses, bukan hanya hasil.",
-    "Satu langkah kecil lebih baik daripada diam.",
-    
-    # Kategori Interaksi
-    "Absen yuk! Kota mana yang lagi hujan sekarang? 🌧️",
-    "Pilih mana: Kerja di kantor atau WFH?",
-    "Skala 1-10, seberapa capek kamu hari ini?",
-    "Tulis 1 keinginanmu yang ingin dicapai bulan ini.",
-    
-    # Kategori Estetik
     "Today's Mood: Relaxing.",
-    "Current State: Focusing.",
-    "Digital Detox: 15 Seconds.",
-    "Office Therapy.",
-    "Quiet Mind, Busy Hands."
+    "Office Therapy."
 ]
 
 def get_drive_service():
@@ -64,28 +45,37 @@ def get_drive_service():
         print(f"Auth Error: {e}")
         return None
 
-def download_random_file(service, folder_id, mime_filter, out_name):
-    q = f"'{folder_id}' in parents and mimeType contains '{mime_filter}' and trashed=false"
-    res = service.files().list(q=q, fields="files(id, name)").execute()
-    files = res.get('files', [])
-    if not files: return None
-    
-    selected = random.choice(files)
-    print(f"[*] Terpilih dari Drive: {selected['name']}")
-    
-    request = service.files().get_media(fileId=selected['id'])
+def download_file(service, file_id, out_name):
+    request = service.files().get_media(fileId=file_id)
     with io.FileIO(out_name, 'wb') as fh:
         downloader = MediaIoBaseDownload(fh, request)
         done = False
         while not done:
             _, done = downloader.next_chunk()
-    return selected['name']
+
+def get_all_videos(service, folder_id):
+    q = f"'{folder_id}' in parents and mimeType contains 'video' and trashed=false"
+    res = service.files().list(q=q, fields="files(id, name)").execute()
+    return res.get('files', [])
+
+def get_random_music(service, folder_id):
+    q = f"'{folder_id}' in parents and mimeType contains 'audio' and trashed=false"
+    res = service.files().list(q=q, fields="files(id, name)").execute()
+    files = res.get('files', [])
+    return random.choice(files) if files else None
+
+def move_to_archive(service, file_id, source_folder, target_folder):
+    if not target_folder: return
+    service.files().update(
+        fileId=file_id,
+        addParents=target_folder,
+        removeParents=source_folder,
+        fields='id, parents'
+    ).execute()
 
 def render_with_ffmpeg(v_in, a_in, v_out, text_overlay):
-    print(f"[*] Memproses Video dengan Teks: '{text_overlay}'")
+    print(f"[*] Rendering: {text_overlay}")
     
-    # Desain Teks: 
-    # Font Putih, Ukuran 45, Di tengah layar, Dengan bayangan hitam (Shadow)
     text_filter = (
         f"drawtext=text='{text_overlay}':fontcolor=white:fontsize=45:"
         f"x=(w-text_w)/2:y=(h-text_h)/2-100:fontfile=/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf:"
@@ -113,37 +103,56 @@ def render_with_ffmpeg(v_in, a_in, v_out, text_overlay):
         return False
 
 def main():
-    print("=== ROBOT RENDER SHORTS OTOMATIS (VERSI TEKS BERAGAM) ===")
+    print("=== ROBOT RENDER SHORTS MASSAL ===")
     service = get_drive_service()
     if not service: return
 
-    # 1. Ambil Bahan Acak
-    v_name = download_random_file(service, LIVE_FOLDER_ID, "video", "raw_v.mp4")
-    download_random_file(service, MUSIC_FOLDER_ID, "audio", "raw_a.mp3")
-
-    if not v_name:
-        print("[-] Bahan tidak ditemukan di folder Drive.")
+    # 1. Ambil SEMUA Video dari Folder Bahan Live
+    videos = get_all_videos(service, LIVE_FOLDER_ID)
+    
+    if not videos:
+        print("[-] Tidak ada video di folder Bahan Live.")
         return
 
-    # 2. Pilih Teks Acak dari Daftar yang Sudah Diperluas
-    selected_text = random.choice(LIST_TEXT_SHORTS)
-    
-    # 3. Render
-    output_filename = f"Shorts_Ready_{random.randint(1000,9999)}.mp4"
-    if render_with_ffmpeg("raw_v.mp4", "raw_a.mp3", output_filename, selected_text):
-        print(f"[*] Mengunggah hasil ke Drive: {output_filename}")
+    print(f"[*] Menemukan {len(videos)} video. Memulai proses antrean...")
+
+    for f_info in videos:
+        v_id = f_info['id']
+        v_name = f_info['name']
+        print(f"\n[▶] Memproses File: {v_name}")
+
+        # Download Video Tersebut
+        download_file(service, v_id, "temp_v.mp4")
+
+        # Pilih Musik Acak
+        m_info = get_random_music(service, MUSIC_FOLDER_ID)
+        if m_info:
+            download_file(service, m_info['id'], "temp_a.mp3")
+        else:
+            print("[-] Musik tidak ditemukan, melewati file ini.")
+            continue
+
+        # Pilih Teks & Render
+        selected_text = random.choice(LIST_TEXT_SHORTS)
+        output_name = f"Shorts_{v_name.split('.')[0]}_{random.randint(100,999)}.mp4"
         
-        file_metadata = {
-            'name': output_filename,
-            'parents': [TARGET_FOLDER_ID]
-        }
-        media = MediaFileUpload(output_filename, mimetype='video/mp4', resumable=True)
-        service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-        print("[🚀] SELESAI!")
-    
-    # Bersihkan file sampah di server GitHub
-    for f in ["raw_v.mp4", "raw_a.mp3", output_filename]:
-        if os.path.exists(f): os.remove(f)
+        if render_with_ffmpeg("temp_v.mp4", "temp_a.mp3", output_name, selected_text):
+            # Upload Hasil ke Folder Uplotan
+            print(f"[*] Mengunggah ke Folder Uplotan...")
+            meta = {'name': output_name, 'parents': [TARGET_FOLDER_ID]}
+            media = MediaFileUpload(output_name, mimetype='video/mp4', resumable=True)
+            service.files().create(body=meta, media_body=media).execute()
+
+            # Pindahkan Video Mentah ke Arsip (Agar besok tidak di-render lagi)
+            print("[*] Memindahkan file mentah ke arsip...")
+            move_to_archive(service, v_id, LIVE_FOLDER_ID, ARCHIVE_FOLDER_ID)
+            print(f"[✅] Selesai memproses {v_name}")
+        
+        # Bersihkan file sementara untuk antrean berikutnya
+        for tmp in ["temp_v.mp4", "temp_a.mp3", output_name]:
+            if os.path.exists(tmp): os.remove(tmp)
+
+    print("\n[🚀] SEMUA ANTREAN BERHASIL DIPROSES!")
 
 if __name__ == "__main__":
     main()
