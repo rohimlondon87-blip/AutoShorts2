@@ -1,0 +1,33 @@
+name: Render Automated Shorts
+
+on:
+  schedule:
+    # 18:00 UTC = 02:00 WITA
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+
+jobs:
+  render_process:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: pip install google-api-python-client google-auth-oauthlib moviepy==1.0.3
+
+      - name: Execute Render
+        env:
+          TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
+          SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
+          MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
+          UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
+        run: python render_shorts_auto.py
