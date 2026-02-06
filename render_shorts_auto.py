@@ -20,19 +20,37 @@ MAX_DURATION = 15 # Detik
 
 # --- DAFTAR KATA-KATA OTOMATIS ---
 LIST_TEXT_SHORTS = [
+   # Kategori POV & Relaksasi
     "POV: Menemukan spot kerja paling tenang di kantor.",
     "POV: Kamu butuh 15 detik untuk bernapas.",
     "POV: Hujan, kopi, dan pekerjaan yang belum selesai.",
     "POV: Menghilang sejenak dari keramaian dunia.",
+    "Today's Mood: Relaxing.",
+    "Office Therapy.",
+    
+    # Kategori Kehidupan & Perjuangan (BARU)
+    "Perjuangan hari ini adalah kekuatan untuk hari esok.",
+    "Hidup adalah tentang perjalanan, bukan hanya tujuan.",
+    "Jangan biarkan hari yang buruk membuatmu merasa hidupmu buruk.",
+    "Setiap tetes keringat adalah benih kesuksesan.",
+    "Tetaplah berjuang meskipun dunia sedang tidak berpihak padamu.",
+    "Bukan seberapa cepat kamu sampai, tapi seberapa tangguh kamu bertahan.",
+    "Lelah itu manusiawi, menyerah itu pilihan. Pilih untuk bangkit!",
+    "Tuhan tidak akan memberikan beban melebihi kemampuan hamba-Nya.",
+    "Masa depan yang cerah dibangun dari kerja keras hari ini.",
+    "Jadilah versi terbaik dari dirimu sendiri setiap harinya.",
+    "Proses tidak akan pernah mengkhianati hasil.",
+    "Satu langkah kecil hari ini adalah awal dari lompatan besar.",
+    "Jangan bandingkan prosesmu dengan orang lain.",
+    "Kerja keras dalam diam, biarkan suksesmu yang bersuara.",
+    
+    # Kategori Hook & Interaksi
     "Tonton sampai akhir: Ada yang tenang di menit terakhir.",
     "Coba dengerin pakai earphone... 🎧",
     "Rahasia tetap tenang di bawah tekanan.",
     "Definisi 'Healing' yang sebenarnya.",
     "Istirahatlah, kamu sudah melakukan yang terbaik hari ini.",
-    "Pelan-pelan saja, semua akan selesai pada waktunya.",
-    "Jangan lupa bahagia di sela-sela sibukmu.",
-    "Today's Mood: Relaxing.",
-    "Office Therapy."
+    "Absen yuk! Kota mana yang lagi hujan sekarang? 🌧️"
 ]
 
 def get_drive_service():
