@@ -16,63 +16,41 @@ LIVE_FOLDER_ID = os.environ.get('SOURCE_LIVE_ID')      # Folder Bahan Live
 MUSIC_FOLDER_ID = os.environ.get('MUSIC_FOLDER_ID')   # Folder Bahan Music
 TARGET_FOLDER_ID = os.environ.get('UPLOTAN_FOLDER_ID') # Folder Hasil (Uplotan)
 
-
 MAX_DURATION = 15 
 
-# --- DAFTAR KATA-KATA OTOMATIS (DIPERBARUI) ---
+# --- DAFTAR KATA-KATA OTOMATIS ---
 LIST_TEXT_SHORTS = [
-    # Kategori POV & Relaksasi
     "POV: Menemukan spot kerja paling tenang di kantor.",
     "POV: Kamu butuh 15 detik untuk bernapas.",
     "POV: Hujan, kopi, dan pekerjaan yang belum selesai.",
     "POV: Menghilang sejenak dari keramaian dunia.",
-    "Today's Mood: Relaxing.",
-    "Office Therapy.",
-    
-    # Kategori Kehidupan & Perjuangan (BARU)
     "Perjuangan hari ini adalah kekuatan untuk hari esok.",
     "Hidup adalah tentang perjalanan, bukan hanya tujuan.",
     "Jangan biarkan hari yang buruk membuatmu merasa hidupmu buruk.",
     "Setiap tetes keringat adalah benih kesuksesan.",
-    "Tetaplah berjuang meskipun dunia sedang tidak berpihak padamu.",
-    "Bukan seberapa cepat kamu sampai, tapi seberapa tangguh kamu bertahan.",
     "Lelah itu manusiawi, menyerah itu pilihan. Pilih untuk bangkit!",
     "Tuhan tidak akan memberikan beban melebihi kemampuan hamba-Nya.",
-    "Masa depan yang cerah dibangun dari kerja keras hari ini.",
-    "Jadilah versi terbaik dari dirimu sendiri setiap harinya.",
-    "Proses tidak akan pernah mengkhianati hasil.",
-    "Satu langkah kecil hari ini adalah awal dari lompatan besar.",
-    "Jangan bandingkan prosesmu dengan orang lain.",
-    "Kerja keras dalam diam, biarkan suksesmu yang bersuara.",
-    
-    # Kategori Hook & Interaksi
-    "Tonton sampai akhir: Ada yang tenang di menit terakhir.",
-    "Coba dengerin pakai earphone... 🎧",
-    "Rahasia tetap tenang di bawah tekanan.",
-    "Definisi 'Healing' yang sebenarnya.",
-    "Istirahatlah, kamu sudah melakukan yang terbaik hari ini.",
-    "Absen yuk! Kota mana yang lagi hujan sekarang? 🌧️"
+    "Today's Mood: Relaxing.",
+    "Office Therapy."
 ]
 
 def validate_paths():
-    """Memastikan semua ID folder dari GitHub Secrets terbaca"""
+    """Memastikan kunci folder penting sudah terbaca"""
     print("[*] Memvalidasi Kunci Folder...")
     check = {
         "SOURCE_LIVE_ID": LIVE_FOLDER_ID,
         "MUSIC_FOLDER_ID": MUSIC_FOLDER_ID,
-        "UPLOTAN_FOLDER_ID": TARGET_FOLDER_ID,
-        "PROCESSED_FOLDER_ID": ARCHIVE_FOLDER_ID
+        "UPLOTAN_FOLDER_ID": TARGET_FOLDER_ID
     }
     error_found = False
     for key, value in check.items():
         if not value or value == "None":
-            print(f"⛔ ERROR: GitHub Secret '{key}' belum diisi atau tidak terbaca!")
+            print(f"⛔ ERROR: GitHub Secret '{key}' belum diisi!")
             error_found = True
         else:
             print(f"✅ {key}: Terdeteksi")
     
     if error_found:
-        print("\nSilakan cek tab Settings > Secrets di GitHub Anda.")
         sys.exit(1)
 
 def get_drive_service():
@@ -94,7 +72,6 @@ def download_file(service, file_id, out_name):
             _, done = downloader.next_chunk()
 
 def get_video_duration(file_path):
-    """Mendapatkan durasi video asli menggunakan ffprobe"""
     try:
         cmd = [
             'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
@@ -116,26 +93,12 @@ def get_random_music(service, folder_id):
     files = res.get('files', [])
     return random.choice(files) if files else None
 
-def move_to_archive(service, file_id, source_folder, target_folder):
-    if not target_folder: return
-    try:
-        service.files().update(
-            fileId=file_id,
-            addParents=target_folder,
-            removeParents=source_folder,
-            fields='id, parents'
-        ).execute()
-        print(f"[#] Berhasil dipindah ke Arsip.")
-    except Exception as e:
-        print(f"[!] Gagal pindah ke arsip: {e}")
-
 def render_with_ffmpeg(v_in, a_in, v_out, text_overlay, start_ss):
-    # Logika Auto-Wrap agar teks panjang tidak terpotong (lebar 20 karakter)
     wrapped_text = "\n".join(textwrap.wrap(text_overlay, width=20))
     wrapped_text = wrapped_text.replace("'", "'\\\\\\''")
     
     print(f"[*] Rendering Teks: \n{wrapped_text}")
-    print(f"[*] Titik Mulai Video: {start_ss:.2f} detik")
+    print(f"[*] Start di detik: {start_ss:.2f}")
     
     text_filter = (
         f"drawtext=text='{wrapped_text}':fontcolor=white:fontsize=80:"
@@ -166,7 +129,7 @@ def render_with_ffmpeg(v_in, a_in, v_out, text_overlay, start_ss):
         return False
 
 def main():
-    print("=== ROBOT RENDER SHORTS MASSAL (EDISI PERJUANGAN) ===")
+    print("=== ROBOT RENDER SHORTS MASSAL (TANPA ARSIP) ===")
     validate_paths()
     
     service = get_drive_service()
@@ -177,7 +140,7 @@ def main():
         print("[-] Folder sumber 'Bahan Live' kosong.")
         return
 
-    print(f"[*] Menemukan {len(videos)} video.")
+    print(f"[*] Menemukan {len(videos)} video untuk diproses.")
 
     for f_info in videos:
         v_id, v_name = f_info['id'], f_info['name']
@@ -185,12 +148,9 @@ def main():
 
         download_file(service, v_id, "temp_v.mp4")
         
-        # LOGIKA POTONG ACAK:
-        # Cek durasi video, lalu pilih start_ss secara random
         duration = get_video_duration("temp_v.mp4")
         start_ss = 0
         if duration > MAX_DURATION:
-            # Berikan jarak 1 detik di akhir agar tidak pas-pasan
             start_ss = random.uniform(0, duration - MAX_DURATION - 1)
         
         m_info = get_random_music(service, MUSIC_FOLDER_ID)
@@ -205,16 +165,16 @@ def main():
             try:
                 meta = {'name': output_name, 'parents': [TARGET_FOLDER_ID]}
                 media = MediaFileUpload(output_name, mimetype='video/mp4', resumable=True)
-                file_uploaded = service.files().create(body=meta, media_body=media, fields='id').execute()
-                print(f"[✅] BERHASIL! File ID: {file_uploaded.get('id')}")
-                move_to_archive(service, v_id, LIVE_FOLDER_ID, ARCHIVE_FOLDER_ID)
+                service.files().create(body=meta, media_body=media).execute()
+                print(f"[✅] BERHASIL! Video tersimpan di folder Uplotan.")
+                # CATATAN: Fungsi move_to_archive sudah dihapus sesuai permintaan.
             except Exception as e:
                 print(f"⛔ GAGAL UPLOAD: {e}")
 
         for tmp in ["temp_v.mp4", "temp_a.mp3", output_name]:
             if os.path.exists(tmp): os.remove(tmp)
 
-    print("\n[🚀] SELESAI!")
+    print("\n[🚀] SEMUA PROSES SELESAI!")
 
 if __name__ == "__main__":
     main()
