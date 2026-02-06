@@ -1,16 +1,36 @@
-- name: Execute Render
+name: Render Automated Shorts
+
+on:
+  schedule:
+    # 18:00 UTC = 02:00 WITA
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+
+jobs:
+  render_process:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
+
+      - name: Execute Render
         env:
           TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
           SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
           MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
-          UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }} # <--- PASTIKAN BARIS INI ADA
+          UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
         run: python render_shorts_auto.py
-
-**Langkah Pengecekan Jika Tetap Tidak Ada:**
-1.  Jalankan workflow.
-2.  Buka tab **Actions** > Klik nama proses yang sedang berjalan.
-3.  Cari bagian **"Execute Render"**.
-4.  Lihat apakah ada tulisan `[✅] BERHASIL UPLOAD!`. Jika ada, lihat ID file yang tercantum.
-5.  Jika log tertulis `BERHASIL` tapi file tidak ada di folder "Uplotan", kemungkinan besar ID folder yang Anda masukkan di **GitHub Secrets** (`UPLOTAN_FOLDER_ID`) adalah ID folder lain. Pastikan ID tersebut benar (karakter acak panjang di URL folder tersebut).
-
-Coba perbarui kodenya dan beritahu saya apa yang tertulis di log "Execute Render" Anda!
