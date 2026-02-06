@@ -15,7 +15,7 @@ TOKEN_DATA = os.environ.get('TOKEN_DATA')
 LIVE_FOLDER_ID = os.environ.get('SOURCE_LIVE_ID')      # Folder Bahan Live
 MUSIC_FOLDER_ID = os.environ.get('MUSIC_FOLDER_ID')   # Folder Bahan Music
 TARGET_FOLDER_ID = os.environ.get('UPLOTAN_FOLDER_ID') # Folder Hasil (Uplotan)
-ARCHIVE_FOLDER_ID = os.environ.get('PROCESSED_FOLDER_ID') # Folder Arsip Selesai
+
 
 MAX_DURATION = 15 
 
