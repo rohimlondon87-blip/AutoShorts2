@@ -12,16 +12,27 @@ from googleapiclient.http import MediaIoBaseDownload
 from google.auth.transport.requests import Request
 import google.generativeai as genai
 
-# --- KONFIGURASI ---
-TOKEN_B64 = os.environ.get('TOKEN_DATA_LIVE') or os.environ.get('TOKEN_DATA')
+# --- KONFIGURASI SECRETS ---
+TOKEN_B64 = os.environ.get('TOKEN_DATA')
 SOURCE_ID = os.environ.get('SOURCE_LIVE_ID')
 MUSIC_ID = os.environ.get('MUSIC_FOLDER_ID') 
 API_KEY = os.environ.get('GEMINI_API_KEY')
 STREAM_KEY = os.environ.get('YOUTUBE_STREAM_KEY')
 
-# FAKTOR SLOW MOTION
 SLOW_MOTION_FACTOR = 1.2
 LIVE_DURATION_SEC = random.randint(3300, 3600) 
+
+def find_font():
+    """Mencari lokasi font di server Ubuntu secara otomatis"""
+    paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf"
+    ]
+    for p in paths:
+        if os.path.exists(p):
+            return p
+    return None
 
 def validate_environment():
     missing = []
@@ -30,8 +41,10 @@ def validate_environment():
     if not STREAM_KEY: missing.append("YOUTUBE_STREAM_KEY")
     if not TOKEN_B64: missing.append("TOKEN_DATA")
     if missing:
+        print(f"⛔ ERROR: Secret belum lengkap: {', '.join(missing)}")
         sys.exit(1)
-    genai.configure(api_key=API_KEY)
+    if API_KEY:
+        genai.configure(api_key=API_KEY)
 
 def get_drive_service():
     try:
@@ -39,7 +52,9 @@ def get_drive_service():
         if creds.expired and creds.refresh_token:
             creds.refresh(Request())
         return build('drive', 'v3', credentials=creds)
-    except: return None
+    except Exception as e:
+        print(f"Auth Error: {e}")
+        return None
 
 def download_file(service, file_id, output_name):
     request = service.files().get_media(fileId=file_id)
@@ -56,17 +71,27 @@ def get_multiple_random_files(service, folder_id, mime_type, limit=3):
     return random.sample(files, min(len(files), limit))
 
 def main():
-    print(f"=== MULAI LIVE CINEMA OVERLAY ===")
+    print("=== MULAI LIVE CINEMA ROBUST ===")
     validate_environment()
+    
+    font_path = find_font()
+    if not font_path:
+        print("⛔ ERROR: Font tidak ditemukan!")
+        sys.exit(1)
+    print(f"✅ Menggunakan Font: {font_path}")
+
     drive = get_drive_service()
     if not drive: return
 
     # 1. Pilih Bahan
     video_files = get_multiple_random_files(drive, SOURCE_ID, "video", limit=3)
     music_files = get_multiple_random_files(drive, MUSIC_ID, "audio", limit=10)
-    if not video_files or not music_files: return
+    
+    if not video_files or not music_files:
+        print("[-] Bahan tidak lengkap di Drive.")
+        return
 
-    # 2. Download
+    # 2. Download & Buat Playlist
     vid_list, mus_list = [], []
     for i, v in enumerate(video_files):
         vname = f"v_{i}.mp4"
@@ -84,38 +109,28 @@ def main():
 
     audio_speed = max(0.5, 1.0 / SLOW_MOTION_FACTOR)
 
-    # 3. Filter Complex untuk UI REKAMAN (REC UI)
-    # - drawtext: Untuk tulisan REC yang berkedip (setiap 1 detik)
-    # - drawbox: Untuk sudut-sudut kotak kamera (Top-Left, Top-Right, Bottom-Left, Bottom-Right)
-    # - drawtext (time): Jam berjalan berdasarkan durasi stream
+    # 3. Filter Overlay Cinema (REC & Frame)
+    # - box border diperbaiki agar tidak error sintaks
     overlay_filter = (
-        # 1. Titik Merah Berkedip & Teks REC
-        "drawtext=text='● REC':fontcolor=red:fontsize=40:x=60:y=60:enable='lt(mod(t,2),1)', "
-        "drawtext=text='REC':fontcolor=white:fontsize=40:x=110:y=60:enable='gt(mod(t,2),1)', "
-        
-        # 2. Sudut Kotak Kamera (Aksesoris)
-        "drawbox=x=40:y=40:w=100:h=4:color=white@0.8:t=fill, " # Top-Left Horizontal
-        "drawbox=x=40:y=40:w=4:h=100:color=white@0.8:t=fill, " # Top-Left Vertical
-        "drawbox=x=w-140:y=40:w=100:h=4:color=white@0.8:t=fill, " # Top-Right Horizontal
-        "drawbox=x=w-44:y=40:w=4:h=100:color=white@0.8:t=fill, "  # Top-Right Vertical
-        "drawbox=x=40:y=h-44:w=100:h=4:color=white@0.8:t=fill, " # Bottom-Left Horizontal
-        "drawbox=x=40:y=h-140:w=4:h=100:color=white@0.8:t=fill, " # Bottom-Left Vertical
-        "drawbox=x=w-140:y=h-44:w=100:h=4:color=white@0.8:t=fill, " # Bottom-Right Horizontal
-        "drawbox=x=w-44:y=h-140:w=4:h=100:color=white@0.8:t=fill, " # Bottom-Right Vertical
-        
-        # 3. Jam Berjalan (Timestamp) di Pojok Kanan Atas
-        "drawtext=text='%{pts\\:hms}':fontcolor=white:fontsize=35:x=w-230:y=60:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf, "
-        
-        # 4. Info Resolusi & Baterai (Palsu)
-        "drawtext=text='4K RAW 30FPS':fontcolor=white@0.7:fontsize=20:x=60:y=h-80, "
-        "drawbox=x=w-110:y=h-85:w=50:h=25:color=white:t=2, " # Batere frame
-        "drawbox=x=w-105:y=h-80:w=35:h=15:color=green:t=fill" # Batere isi
+        f"drawtext=text='● REC':fontcolor=red:fontsize=40:x=60:y=60:fontfile={font_path}:enable='lt(mod(t,2),1)', "
+        f"drawtext=text='REC':fontcolor=white:fontsize=40:x=110:y=60:fontfile={font_path}:enable='gt(mod(t,2),1)', "
+        "drawbox=x=40:y=40:w=100:h=4:color=white@0.8:t=fill, "
+        "drawbox=x=40:y=40:w=4:h=100:color=white@0.8:t=fill, "
+        "drawbox=x=w-140:y=40:w=100:h=4:color=white@0.8:t=fill, "
+        "drawbox=x=w-44:y=40:w=4:h=100:color=white@0.8:t=fill, "
+        "drawbox=x=40:y=h-44:w=100:h=4:color=white@0.8:t=fill, "
+        "drawbox=x=40:y=h-140:w=4:h=100:color=white@0.8:t=fill, "
+        "drawbox=x=w-140:y=h-44:w=100:h=4:color=white@0.8:t=fill, "
+        "drawbox=x=w-44:y=h-140:w=4:h=100:color=white@0.8:t=fill, "
+        f"drawtext=text='%{{pts\\:hms}}':fontcolor=white:fontsize=35:x=w-230:y=60:fontfile={font_path}"
     )
 
+    # 4. Stream Command
+    print(f"[*] Mengirim siaran ke YouTube... (Durasi: {LIVE_DURATION_SEC//60} Menit)")
     cmd = [
         'ffmpeg', '-re', '-fflags', '+genpts+igndts',
         '-stream_loop', '-1', '-f', 'concat', '-safe', '0', '-i', 'video_playlist.txt',
-        '-stream_loop', '-1', '-f', 'concat', '-safe', '0', '-i', 'music_playlist.txt',
+        '-stream_loop', '-1', '-i', 'music_playlist.txt',
         '-t', str(LIVE_DURATION_SEC),
         '-filter_complex', (
             f'[0:v]scale=1280:720,setpts={SLOW_MOTION_FACTOR}*PTS,fps=30,{overlay_filter}[vout]; '
@@ -125,7 +140,7 @@ def main():
         ),
         '-map', '[vout]', '-map', '[aout]',
         '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
-        '-b:v', '2000k', '-maxrate', '2000k', '-bufsize', '4000k',
+        '-b:v', '2500k', '-maxrate', '2500k', '-bufsize', '5000k',
         '-pix_fmt', 'yuv420p', '-g', '60', '-r', '30',
         '-c:a', 'aac', '-b:a', '128k', '-ar', '44100',
         '-f', 'flv', f"rtmp://a.rtmp.youtube.com/live2/{STREAM_KEY}"
@@ -134,14 +149,20 @@ def main():
     try:
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
         for line in process.stdout:
-            if "frame=" in line: print(line.strip(), end='\r')
+            if "frame=" in line: 
+                print(line.strip(), end='\r')
+            elif "Error" in line:
+                print(f"\n[!] Log: {line.strip()}")
         process.wait()
-        print("\n[🚀] LIVE CINEMA SELESAI!")
+        print("\n[🚀] LIVE SELESAI!")
     except Exception as e:
-        print(f"\n[-] Error: {e}")
+        print(f"\n[-] Fatal Error: {e}")
     finally:
-        for f in vid_list + mus_list + ["video_playlist.txt", "music_playlist.txt"]:
+        # Bersihkan file sampah
+        files_to_clean = vid_list + mus_list + ["video_playlist.txt", "music_playlist.txt"]
+        for f in files_to_clean:
             if os.path.exists(f): os.remove(f)
 
 if __name__ == "__main__":
     main()
+
