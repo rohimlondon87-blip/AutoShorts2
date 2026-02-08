@@ -11,10 +11,10 @@ from googleapiclient.http import MediaIoBaseDownload
 from google.auth.transport.requests import Request
 import google.generativeai as genai
 
-# --- KONFIGURASI SINKRON DENGAN .YML & FOTO GITHUB ---
+# --- KONFIGURASI SINKRON ---
 TOKEN_B64 = os.environ.get('TOKEN_DATA')
 SOURCE_ID = os.environ.get('SOURCE_LIVE_ID')
-MUSIC_ID = os.environ.get('MUSIC_FOLDER_ID') # Sudah disamakan dengan foto
+MUSIC_ID = os.environ.get('MUSIC_FOLDER_ID')
 STREAM_KEY = os.environ.get('YOUTUBE_STREAM_KEY')
 API_KEY = os.environ.get('GEMINI_API_KEY')
 
@@ -38,18 +38,9 @@ def validate_environment():
     if not SOURCE_ID: missing.append("SOURCE_LIVE_ID")
     if not MUSIC_ID: missing.append("MUSIC_FOLDER_ID")
     if not STREAM_KEY: missing.append("YOUTUBE_STREAM_KEY")
-    
     if missing:
-        print(f"⛔ ERROR: Data berikut tidak terkirim dari GitHub Actions ke Skrip:")
-        for m in missing:
-            print(f"   - {m}")
-        print("\nPastikan nama di file .yml bagian 'env:' sama dengan nama di GitHub Secrets.")
+        print(f"⛔ ERROR: Data berikut tidak ditemukan: {', '.join(missing)}")
         sys.exit(1)
-    
-    print("✅ Semua kunci Secret terdeteksi.")
-    if API_KEY:
-        genai.configure(api_key=API_KEY)
-        print("✅ Gemini AI: Aktif")
 
 def get_drive_service():
     try:
@@ -69,33 +60,26 @@ def download_file(service, file_id, output_name):
         while not done: _, done = downloader.next_chunk()
 
 def get_multiple_random_files(service, folder_id, mime_type, limit=3):
-    try:
-        q = f"'{folder_id}' in parents and mimeType contains '{mime_type}' and trashed=false"
-        res = service.files().list(q=q, fields="files(id, name)").execute()
-        files = res.get('files', [])
-        if not files: return []
-        return random.sample(files, min(len(files), limit))
-    except Exception as e:
-        print(f"[-] Drive List Error: {e}")
-        return []
+    q = f"'{folder_id}' in parents and mimeType contains '{mime_type}' and trashed=false"
+    res = service.files().list(q=q, fields="files(id, name)").execute()
+    files = res.get('files', [])
+    if not files: return []
+    return random.sample(files, min(len(files), limit))
 
 def main():
-    print("=== MULAI LIVE CINEMA ROBUST (FIX NAMES) ===")
+    print("=== MULAI LIVE CINEMA ROBUST (FIX 183) ===")
     validate_environment()
     
     font_path = find_font()
     drive = get_drive_service()
     if not drive: return
 
-    # 1. Ambil Bahan
+    # 1. Pilih Bahan
     video_files = get_multiple_random_files(drive, SOURCE_ID, "video", limit=3)
     music_files = get_multiple_random_files(drive, MUSIC_ID, "audio", limit=10)
     
-    if not video_files:
-        print(f"[-] Folder Video (ID: {SOURCE_ID}) kosong atau tidak bisa diakses.")
-        return
-    if not music_files:
-        print(f"[-] Folder Musik (ID: {MUSIC_ID}) kosong atau tidak bisa diakses.")
+    if not video_files or not music_files:
+        print("[-] Bahan tidak ditemukan di Drive.")
         return
 
     # 2. Persiapan Playlist
@@ -114,17 +98,26 @@ def main():
     with open("music_playlist.txt", "w") as f:
         for mn in mus_list: f.write(f"file '{mn}'\n")
 
+    # 3. Bangun Filter (TANPA f-string untuk bagian yang sensitif)
+    # Filter REC berkedip
+    rec_red = f"drawtext=text='● REC':fontcolor=red:fontsize=40:x=60:y=60:fontfile={font_path}:enable='lt(mod(t,2),1)'"
+    rec_white = f"drawtext=text='REC':fontcolor=white:fontsize=40:x=110:y=60:fontfile={font_path}:enable='gt(mod(t,2),1)'"
+    # Filter Jam (Gunakan format sederhana agar tidak error 183)
+    time_text = "drawtext=text='%{pts\:hms}':fontcolor=white:fontsize=35:x=w-230:y=60:fontfile=" + font_path
+    
+    overlay_filter = f"{rec_red}, {rec_white}, {time_text}"
+    
     audio_speed = max(0.5, 1.0 / SLOW_MOTION_FACTOR)
-    overlay_filter = (
-        f"drawtext=text='● REC':fontcolor=red:fontsize=40:x=60:y=60:fontfile={font_path}:enable='lt(mod(t,2),1)', "
-        f"drawtext=text='REC':fontcolor=white:fontsize=40:x=110:y=60:fontfile={font_path}:enable='gt(mod(t,2),1)', "
-        f"drawtext=text='%{{pts\\:hms}}':fontcolor=white:fontsize=35:x=w-230:y=60:fontfile={font_path}"
-    )
 
-    # 3. Jalankan Streaming
-    print(f"[*] Mengirim siaran... Durasi: {LIVE_DURATION_SEC//60} Menit")
+    # 4. Jalankan Streaming
+    print(f"[*] Mengirim siaran ke RTMP... Durasi: {LIVE_DURATION_SEC//60} Menit")
+    
+    # URL RTMP
+    rtmp_url = f"rtmp://a.rtmp.youtube.com/live2/{STREAM_KEY}"
+
     cmd = [
-        'ffmpeg', '-re', '-f', 'concat', '-safe', '0', '-i', 'video_playlist.txt',
+        'ffmpeg', '-re', 
+        '-f', 'concat', '-safe', '0', '-i', 'video_playlist.txt',
         '-stream_loop', '-1', '-i', 'music_playlist.txt',
         '-t', str(LIVE_DURATION_SEC),
         '-filter_complex', (
@@ -134,19 +127,23 @@ def main():
         ),
         '-map', '[vout]', '-map', '[aout]',
         '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
-        '-pix_fmt', 'yuv420p', '-g', '60', '-c:a', 'aac', '-ar', '44100',
-        '-f', 'flv', f"rtmp://a.rtmp.youtube.com/live2/{STREAM_KEY}"
+        '-pix_fmt', 'yuv420p', '-g', '60', '-c:a', 'aac', '-b:a', '128k', '-ar', '44100',
+        '-f', 'flv', rtmp_url
     ]
 
     try:
+        # Tunggu 2 detik agar file playlist benar-benar siap di disk
+        time.sleep(2)
         subprocess.run(cmd, check=True)
         print("\n[🚀] LIVE SELESAI!")
+    except subprocess.CalledProcessError as e:
+        print(f"\n[-] FFmpeg Error (Status {e.returncode})")
     except Exception as e:
-        print(f"\n[-] Error Streaming: {e}")
+        print(f"\n[-] Error Sistem: {e}")
     finally:
+        # Pembersihan
         for f in vid_list + mus_list + ["video_playlist.txt", "music_playlist.txt"]:
             if os.path.exists(f): os.remove(f)
 
 if __name__ == "__main__":
     main()
-
