@@ -1,27 +1,33 @@
-name: Auto Live Stream
+name: Auto Rain Live Stream
 
 on:
   schedule:
-    # 08:00 UTC sama dengan 16:00 WITA atau 15:00 WIB
-    - cron: '0 8 * * *' 
-  workflow_dispatch:      # Tombol manual tetap aktif
+    - cron: '0 15 * * *'
+  workflow_dispatch:
 
 jobs:
-  live:
+  live_session:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Ambil Kode
+        uses: actions/checkout@v4
+
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - uses: actions/setup-python@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install google-api-python-client google-auth-oauthlib google-auth-httplib2 google-generativeai
-      - name: Jalankan Live
+
+      - name: Install Library
+        run: pip install google-api-python-client google-auth-oauthlib google-auth-httplib2 google-generativeai
+
+      - name: Jalankan Robot Live
         env:
           TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
-          SOURCE_FOLDER_ID: ${{ secrets.SOURCE_FOLDER_ID }}
+          SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
+          MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
-          LIVE_DURATION: '3600' # Durasi live 1 jam
         run: python auto_live_rain.py
