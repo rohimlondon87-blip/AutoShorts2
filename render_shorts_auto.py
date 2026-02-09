@@ -20,18 +20,36 @@ MAX_DURATION = 15
 
 # --- DAFTAR KATA-KATA OTOMATIS ---
 LIST_TEXT_SHORTS = [
-    "POV: Menemukan spot kerja paling tenang di kantor.",
-    "POV: Kamu butuh 15 detik untuk bernapas.",
-    "POV: Hujan, kopi, dan pekerjaan yang belum selesai.",
-    "POV: Menghilang sejenak dari keramaian dunia.",
+    # Tema Perjuangan
     "Perjuangan hari ini adalah kekuatan untuk hari esok.",
-    "Hidup adalah tentang perjalanan, bukan hanya tujuan.",
+    "Lelah itu manusiawi, menyerah itu pilihan. Bangkit!",
+    "Hasil tidak akan pernah mengkhianati proses yang jujur.",
+    "Jangan berhenti saat lelah, berhentilah saat selesai.",
+    "Masa sulit akan membentuk pribadi yang jauh lebih kuat.",
+    "Kemenangan terbesar adalah saat kita mampu mengalahkan diri sendiri.",
+    "Bekerja keraslah dalam diam, biarkan suksesmu yang bersuara.",
+    "Setiap tetes keringat adalah investasi untuk masa depanmu.",
+    "Rasa sakit yang kamu rasakan hari ini akan jadi kekuatanmu besok.",
+    "Disiplin adalah jembatan antara cita-cita dan pencapaian.",
+    
+    # Tema Kehidupan
+    "Hidup adalah tentang perjalanan, bukan hanya tentang tujuan.",
     "Jangan biarkan hari yang buruk membuatmu merasa hidupmu buruk.",
-    "Setiap tetes keringat adalah benih kesuksesan.",
-    "Lelah itu manusiawi, menyerah itu pilihan. Pilih untuk bangkit!",
-    "Tuhan tidak akan memberikan beban melebihi kemampuan hamba-Nya.",
-    "Today's Mood: Relaxing.",
-    "Office Therapy."
+    "Setiap hari adalah kesempatan baru untuk memperbaiki diri.",
+    "Fokuslah pada apa yang bisa kamu kendalikan hari ini.",
+    "Masa depan adalah milik mereka yang percaya pada mimpi mereka.",
+    "Hidup bukan tentang menemukan diri, tapi menciptakan diri sendiri.",
+    "Pelan-pelan saja, semua akan sampai pada waktunya.",
+    "Hargai setiap proses kecil yang sedang kamu lalui.",
+    "Jangan bandingkan bab pertama hidupmu dengan bab ke-20 orang lain.",
+    "Jadilah versi terbaik dari dirimu sendiri, bukan salinan orang lain.",
+    
+    # Tema Relaksasi & POV
+    "POV: Menemukan ketenangan di tengah hiruk pikuk dunia.",
+    "POV: Kamu hanya butuh 15 detik untuk kembali bernapas.",
+    "Istirahat sejenak, kamu sudah melakukan yang terbaik hari ini.",
+    "Today's Mood: Tenang, Fokus, dan Tetap Berjuang.",
+    "Jangan lupa bahagia di sela-sela perjuanganmu."
 ]
 
 def validate_paths():
