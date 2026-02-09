@@ -10,15 +10,14 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 from google.auth.transport.requests import Request
 
-# --- KONFIGURASI DARI GITHUB SECRETS ---
+# --- KONFIGURASI SESUAI GITHUB SECRETS ---
 TOKEN_DATA = os.environ.get('TOKEN_DATA')
-LIVE_FOLDER_ID = os.environ.get('SOURCE_LIVE_ID')      # Folder Bahan Live
-MUSIC_FOLDER_ID = os.environ.get('MUSIC_FOLDER_ID')   # Folder Bahan Music
-TARGET_FOLDER_ID = os.environ.get('UPLOTAN_FOLDER_ID') # Folder Hasil (Uplotan)
+SOURCE_LIVE_ID = os.environ.get('SOURCE_LIVE_ID')      
+MUSIC_FOLDER_ID = os.environ.get('MUSIC_FOLDER_ID')   
+UPLOTAN_FOLDER_ID = os.environ.get('UPLOTAN_FOLDER_ID') 
 
 MAX_DURATION = 15 
 
-# --- DAFTAR KATA-KATA OTOMATIS ---
 LIST_TEXT_SHORTS = [
     # Tema Perjuangan
     "Perjuangan hari ini adalah kekuatan untuk hari esok.",
@@ -52,16 +51,15 @@ LIST_TEXT_SHORTS = [
     "Jangan lupa bahagia di sela-sela perjuanganmu."
 ]
 
-def validate_paths():
-    print("[*] Mengecek Pengaturan Secret...")
-    errors = []
-    if not TOKEN_DATA: errors.append("TOKEN_DATA")
-    if not LIVE_FOLDER_ID: errors.append("SOURCE_LIVE_ID")
-    if not MUSIC_FOLDER_ID: errors.append("MUSIC_FOLDER_ID")
-    if not TARGET_FOLDER_ID: errors.append("UPLOTAN_FOLDER_ID")
-    if errors:
-        print(f"⛔ ERROR: Secret berikut kosong: {', '.join(errors)}")
-        sys.exit(1)
+def find_font():
+    paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf"
+    ]
+    for p in paths:
+        if os.path.exists(p): return p
+    return None
 
 def get_drive_service():
     try:
@@ -73,115 +71,88 @@ def get_drive_service():
         print(f"Auth Error: {e}")
         return None
 
-def download_file(service, file_id, out_name):
-    request = service.files().get_media(fileId=file_id)
-    with io.FileIO(out_name, 'wb') as fh:
-        downloader = MediaIoBaseDownload(fh, request)
-        done = False
-        while not done:
-            _, done = downloader.next_chunk()
-
 def get_video_duration(file_path):
     try:
-        cmd = [
-            'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-            '-of', 'default=noprint_wrappers=1:nokey=1', file_path
-        ]
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        return float(result.stdout.strip())
-    except:
-        return 0
+        cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', file_path]
+        return float(subprocess.check_output(cmd).decode().strip())
+    except: return 0
 
-def get_all_videos(service, folder_id):
-    q = f"'{folder_id}' in parents and mimeType contains 'video' and trashed=false"
-    res = service.files().list(q=q, fields="files(id, name)").execute()
-    return res.get('files', [])
-
-def get_random_music(service, folder_id):
-    q = f"'{folder_id}' in parents and mimeType contains 'audio' and trashed=false"
-    res = service.files().list(q=q, fields="files(id, name)").execute()
-    files = res.get('files', [])
-    return random.choice(files) if files else None
-
-def render_with_ffmpeg(v_in, a_in, v_out, text_overlay, start_ss):
-    # Logika Wrapping Teks
-    lines = textwrap.wrap(text_overlay, width=20)
-    # Gunakan karakter khusus untuk baris baru yang dipahami FFmpeg filter
-    wrapped_text = "\\\n".join(lines)
-    wrapped_text = wrapped_text.replace("'", "") # Hapus petik tunggal agar tidak merusak filter
+def render_with_ffmpeg(v_in, a_in, v_out, text_overlay, start_ss, font_p):
+    wrapped = "\n".join(textwrap.wrap(text_overlay, width=20))
+    safe_text = wrapped.replace("'", "").replace(":", "\\:")
     
-    print(f"[*] Menyiapkan Render: {text_overlay} (Start: {start_ss:.2f}s)")
-    
-    # Perbaikan Filter: Menghapus align=center (tidak semua versi FFmpeg mendukung)
-    # Sebagai gantinya x=(w-text_w)/2 sudah cukup untuk rata tengah horizontal
     text_filter = (
-        f"drawtext=text='{wrapped_text}':fontcolor=white:fontsize=80:"
-        f"x=(w-text_w)/2:y=(h-text_h)/2:fontfile=/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf:"
-        f"box=1:boxcolor=black@0.5:boxborderw=30:line_spacing=20:"
+        f"drawtext=text='{safe_text}':fontcolor=white:fontsize=85:"
+        f"x=(w-text_w)/2:y=(h-text_h)/2:fontfile={font_p}:"
+        f"box=1:boxcolor=black@0.5:boxborderw=35:line_spacing=20:"
         f"shadowcolor=black@0.9:shadowx=5:shadowy=5"
     )
 
     cmd = [
         'ffmpeg', '-y',
-        '-ss', str(start_ss), '-t', str(MAX_DURATION), '-i', v_in,
+        '-ss', str(round(start_ss, 2)), '-t', str(MAX_DURATION), '-i', v_in,
         '-stream_loop', '-1', '-i', a_in,
         '-filter_complex', (
             f'[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,{text_filter}[vout]; '
             f'[0:a]volume=0.2[a1]; [1:a]volume=1.0[a2]; [a1][a2]amix=inputs=2:duration=first[aout]'
         ),
         '-map', '[vout]', '-map', '[aout]',
-        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-t', str(MAX_DURATION),
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26', '-t', str(MAX_DURATION),
         '-c:a', 'aac', '-b:a', '128k', v_out
     ]
     
     try:
-        # Gunakan capture_output untuk melihat pesan error detail jika gagal lagi
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            print(f"[-] FFmpeg Fail Log: {result.stderr}")
-            return False
-        return True
-    except Exception as e:
-        print(f"[-] System Error: {e}")
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        return res.returncode == 0
+    except:
         return False
 
 def main():
-    print("=== ROBOT RENDER SHORTS MASSAL (FIX EXIT STATUS 8) ===")
-    validate_paths()
+    print("=== ROBOT SHORTS (SISTEM CATATAN TEKS) ===")
     service = get_drive_service()
-    if not service: return
+    font_path = find_font()
+    if not service or not font_path: return
 
-    videos = get_all_videos(service, LIVE_FOLDER_ID)
-    if not videos:
-        print("[-] Folder sumber kosong.")
-        return
+    v_files = service.files().list(q=f"'{SOURCE_LIVE_ID}' in parents and mimeType contains 'video' and trashed=false").execute().get('files', [])
+    m_files = service.files().list(q=f"'{MUSIC_FOLDER_ID}' in parents and mimeType contains 'audio' and trashed=false").execute().get('files', [])
 
-    for f_info in videos:
-        v_id, v_name = f_info['id'], f_info['name']
-        print(f"\n[▶] Memproses: {v_name}")
+    if not v_files: return
 
-        download_file(service, v_id, "temp_v.mp4")
-        duration = get_video_duration("temp_v.mp4")
-        start_ss = random.uniform(0, max(0, duration - MAX_DURATION - 1))
+    for f in v_files:
+        print(f"\n[▶] Memproses: {f['name']}")
         
-        m_info = get_random_music(service, MUSIC_FOLDER_ID)
-        if m_info: download_file(service, m_info['id'], "temp_a.mp3")
-        else: continue
+        # Download Video & Music
+        download_req = service.files().get_media(fileId=f['id'])
+        with open("temp_v.mp4", "wb") as fh:
+            downloader = MediaIoBaseDownload(fh, download_req)
+            done = False
+            while not done: _, done = downloader.next_chunk()
+            
+        ms = random.choice(m_files)
+        with open("temp_a.mp3", "wb") as fh:
+            downloader = MediaIoBaseDownload(fh, service.files().get_media(fileId=ms['id']))
+            done = False
+            while not done: _, done = downloader.next_chunk()
 
+        # Logika Render
+        dur = get_video_duration("temp_v.mp4")
+        start = random.uniform(0, max(0, dur - MAX_DURATION - 2))
         selected_text = random.choice(LIST_TEXT_SHORTS)
-        output_name = f"Shorts_{random.randint(100,999)}.mp4"
-        
-        if render_with_ffmpeg("temp_v.mp4", "temp_a.mp3", output_name, selected_text, start_ss):
-            print(f"[*] Mengunggah ke Drive...")
-            try:
-                meta = {'name': output_name, 'parents': [TARGET_FOLDER_ID]}
-                media = MediaFileUpload(output_name, mimetype='video/mp4', resumable=True)
-                service.files().create(body=meta, media_body=media).execute()
-                print(f"[✅] BERHASIL!")
-            except Exception as e:
-                print(f"⛔ GAGAL UPLOAD: {e}")
+        out = f"Shorts_{random.randint(1000,9999)}.mp4"
 
-        for tmp in ["temp_v.mp4", "temp_a.mp3", output_name]:
+        if render_with_ffmpeg("temp_v.mp4", "temp_a.mp3", out, selected_text, start, font_path):
+            print("[*] Mengunggah ke Folder Uplotan dengan Metadata Teks...")
+            # Kita simpan selected_text di properti 'description' file Drive
+            meta = {
+                'name': out, 
+                'parents': [UPLOTAN_FOLDER_ID],
+                'description': selected_text # <--- INI KUNCI UNTUK JUDUL NANTI
+            }
+            media = MediaFileUpload(out, mimetype='video/mp4')
+            service.files().create(body=meta, media_body=media).execute()
+            print("[✅] BERHASIL!")
+        
+        for tmp in ["temp_v.mp4", "temp_a.mp3", out]:
             if os.path.exists(tmp): os.remove(tmp)
 
 if __name__ == "__main__":
