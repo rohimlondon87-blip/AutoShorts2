@@ -9,10 +9,10 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from google.auth.transport.requests import Request
 
-# --- AMBIL KUNCI GITHUB ---
+# --- KONFIGURASI KUNCI GITHUB ---
 CLIENT_SECRETS = os.environ.get('CLIENT_SECRETS_DATA')
 TOKEN_DATA = os.environ.get('TOKEN_DATA')
-SOURCE_ID = os.environ.get('UPLOTAN_FOLDER_ID') # Ambil dari folder hasil render
+SOURCE_ID = os.environ.get('UPLOTAN_FOLDER_ID') # Folder hasil render
 ARCHIVE_ID = os.environ.get('PROCESSED_FOLDER_ID')
 
 def get_services():
@@ -28,62 +28,65 @@ def get_services():
         return None, None
 
 def main():
-    print("=== MULAI UPLOADER (JUDUL TEKS & JADWAL 1 JAM) ===")
+    print("=== MULAI UPLOADER (JUDUL DALAM DESKRIPSI) ===")
     drive, youtube = get_services()
     if not drive: return
 
-    # Cari file di folder Uplotan (hasil render)
+    # Ambil 1 file terbaru dari folder Uplotan
     q = f"'{SOURCE_ID}' in parents and mimeType='video/mp4' and trashed=false"
     res = drive.files().list(q=q, orderBy="createdTime", pageSize=1, fields="files(id, name, description)").execute()
     files = res.get('files', [])
 
     if not files:
-        print("[-] Tidak ada video di folder Uplotan.")
+        print("[-] Tidak ada video baru untuk di-upload.")
         return
     
     f = files[0]
-    # Ambil judul dari deskripsi file Drive (yang diisi oleh render_shorts_auto.py)
-    judul_video = f.get('description', f['name'].split('.')[0])
-    print(f"[*] Memproses: {f['name']}")
-    print(f"[*] Judul YouTube: {judul_video}")
+    # Mengambil teks yang disimpan di metadata 'description' Drive oleh skrip render
+    judul_shorts = f.get('description', 'Shorts Perjuangan') 
     
-    # Download file ke server GitHub
+    print(f"[*] Judul Terdeteksi: {judul_shorts}")
+    
+    # Download file ke server GitHub sementara
     request = drive.files().get_media(fileId=f['id'])
-    final_v = "upload.mp4"
-    with io.FileIO(final_v, 'wb') as fh:
+    v_path = "upload_ready.mp4"
+    with io.FileIO(v_path, 'wb') as fh:
         downloader = MediaIoBaseDownload(fh, request)
         done = False
         while not done: _, done = downloader.next_chunk()
 
-    # HITUNG WAKTU JADWAL (Sekarang + 1 Jam)
-    # Format: 2024-05-20T15:00:00Z (ISO 8601)
+    # Hitung waktu jadwal (1 jam dari sekarang)
     publish_time = (datetime.utcnow() + timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%SZ')
-    print(f"[*] Menjadwalkan publikasi pada: {publish_time} UTC")
 
-    # Upload ke YouTube
-    # PENTING: privacyStatus HARUS 'private' agar publishAt berfungsi
+    # Susun Metadata YouTube
+    # Deskripsi sekarang menggabungkan Judul + Hashtag sesuai permintaan Anda
+    full_description = f"{judul_shorts}\n\n#shorts #viral #perjuangan #kehidupan #motivation"
+
     body = {
         'snippet': {
-            'title': judul_video[:100], # Potong jika lebih dari 100 karakter
-            'description': f"{judul_video}\n\n#shorts #perjuangan #kehidupan",
+            'title': judul_shorts[:100], # Judul YouTube
+            'description': full_description, # Judul dimasukkan ke deskripsi
             'categoryId': '22'
         },
         'status': {
-            'privacyStatus': 'private',
-            'publishAt': publish_time,
+            'privacyStatus': 'private', # Wajib private agar bisa dijadwalkan
+            'publishAt': publish_time,   # Jadwal publikasi otomatis
             'selfDeclaredMadeForKids': False
         }
     }
     
-    media = MediaFileUpload(final_v, chunksize=-1, resumable=True)
-    resp = youtube.videos().insert(part='snippet,status', body=body, media_body=media).execute()
+    print(f"[*] Mengunggah ke YouTube & Menjadwalkan ke jam: {publish_time}")
+    media = MediaFileUpload(v_path, chunksize=-1, resumable=True)
+    response = youtube.videos().insert(part='snippet,status', body=body, media_body=media).execute()
     
-    print(f"[🚀] SUKSES! Video dijadwalkan. ID: {resp['id']}")
+    print(f"[✅] BERHASIL! Video dijadwalkan. ID: {response['id']}")
 
-    # Pindah ke Arsip & hapus file lokal
+    # Pindahkan file asli di Drive ke folder Arsip agar tidak upload ulang
     drive.files().update(fileId=f['id'], addParents=ARCHIVE_ID, removeParents=SOURCE_ID).execute()
-    if os.path.exists(final_v): os.remove(final_v)
-    if os.path.exists("client_secrets.json"): os.remove("client_secrets.json")
+    
+    # Hapus file sampah
+    for tmp in [v_path, "client_secrets.json"]:
+        if os.path.exists(tmp): os.remove(tmp)
 
 if __name__ == "__main__":
     main()
