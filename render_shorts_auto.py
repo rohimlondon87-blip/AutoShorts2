@@ -19,7 +19,7 @@ UPLOTAN_FOLDER_ID = os.environ.get('UPLOTAN_FOLDER_ID')
 MAX_DURATION = 15 
 
 LIST_TEXT_SHORTS = [
-    # Tema Perjuangan
+   # Tema Perjuangan
     "Perjuangan hari ini adalah kekuatan untuk hari esok.",
     "Lelah itu manusiawi, menyerah itu pilihan. Bangkit!",
     "Hasil tidak akan pernah mengkhianati proses yang jujur.",
