@@ -27,10 +27,18 @@ jobs:
         run: |
           pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
 
-      - name: Execute Render
+     - name: Execute Render
         env:
           TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
           SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
           MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
           UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
+          QUOTES_FILE_ID: ${{ secrets.QUOTES_FILE_ID }} # Tambahkan baris ini
         run: python render_shorts_auto.py
+
+### Keuntungan Sistem Baru Ini:
+1.  **Mudah Diedit:** Anda tinggal buka Google Drive dari HP, edit file `quotes.txt`, tambahkan kata-kata baru, lalu simpan.
+2.  **Satu Tempat:** Tidak perlu lagi mencari-cari baris kode di GitHub hanya untuk mengganti satu kata.
+3.  **Dinamis:** Robot akan mendownload versi terbaru dari file tersebut setiap kali ia mulai bekerja.
+
+Apakah Anda sudah menemukan ID file `quotes.txt` tersebut untuk dimasukkan ke GitHub Secrets?
