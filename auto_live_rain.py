@@ -93,6 +93,12 @@ def post_to_chat(youtube, chat_id, message):
         print(f"[!] Gagal kirim chat: {e}")
 
 def main():
+    # --- LOGIKA JEDA ACAK (15:00 - 17:00 WITA) ---
+    # Jika dipicu jam 15:00, kita beri jeda maksimal 120 menit (2 jam)
+    delay_menit = random.randint(0, 120)
+    print(f"[⏳] Robot sedang menunggu jeda acak selama {delay_menit} menit agar waktu mulai natural...")
+    time.sleep(delay_menit * 60)
+    
     print(f"=== MULAI LIVE CINEMA (DURASI ACAK: {LIVE_DURATION_SEC//60} MENIT) ===")
     drive, youtube = get_services()
     font_path = find_font()
