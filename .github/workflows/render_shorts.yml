@@ -1,16 +1,17 @@
-name: Render Automated Shorts
+name: Auto Render & Process Shorts
 
 on:
   schedule:
-    # 18:00 UTC = 02:00 WITA
+    # Mengatur jadwal render otomatis. 
+    # Contoh: '0 18 * * *' berarti jam 02:00 WITA / 01:00 WIB.
     - cron: '0 18 * * *'
-  workflow_dispatch:
+  workflow_dispatch: # Memungkinkan menjalankan secara manual dari tab Actions
 
 jobs:
-  render_process:
+  render_shorts:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Install FFmpeg
@@ -27,18 +28,12 @@ jobs:
         run: |
           pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
 
-     - name: Execute Render
+      - name: Jalankan Robot Render
         env:
+          # Pastikan semua Secret ini sudah terisi di Settings > Secrets > Actions
           TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
           SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
           MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
           UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
-          QUOTES_FILE_ID: ${{ secrets.QUOTES_FILE_ID }} # Tambahkan baris ini
+          QUOTES_FILE_ID: ${{ secrets.QUOTES_FILE_ID }}
         run: python render_shorts_auto.py
-
-### Keuntungan Sistem Baru Ini:
-1.  **Mudah Diedit:** Anda tinggal buka Google Drive dari HP, edit file `quotes.txt`, tambahkan kata-kata baru, lalu simpan.
-2.  **Satu Tempat:** Tidak perlu lagi mencari-cari baris kode di GitHub hanya untuk mengganti satu kata.
-3.  **Dinamis:** Robot akan mendownload versi terbaru dari file tersebut setiap kali ia mulai bekerja.
-
-Apakah Anda sudah menemukan ID file `quotes.txt` tersebut untuk dimasukkan ke GitHub Secrets?
