@@ -1,0 +1,37 @@
+name: Perbarui Laporan YouTube
+
+on:
+  schedule:
+    # Berjalan setiap hari jam 08:00 WITA (00:00 UTC)
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Agar bisa dijalankan manual lewat tombol
+
+jobs:
+  update_report:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Wajib agar robot bisa mengupdate file di repo
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Library
+        run: pip install google-api-python-client
+
+      - name: Jalankan Robot Laporan
+        env:
+          TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
+        run: python youtube_analytics.py
+
+      - name: Commit & Push Laporan ke GitHub
+        run: |
+          git config --global user.name "Robot Laporan"
+          git config --global user.email "bot@github.com"
+          git add LAPORAN_YOUTUBE.md
+          git commit -m "Update statistik YouTube harian" || echo "Tidak ada perubahan data"
+          git push
