@@ -31,7 +31,7 @@ def clean_id(folder_id):
     return cleaned.strip()
 
 UPLOTAN_ID = clean_id(os.environ.get('UPLOTAN_FOLDER_ID', ''))
-SELESAI_ID = clean_id(os.environ.get('SHORT_SELESAI_ID', ''))
+SELESAI_ID = clean_id(os.environ.get('PROCESSED_FOLDER_ID', ''))
 
 def get_services(token_b64, secret_b64, label):
     """Melakukan autentikasi menggunakan set token tertentu."""
