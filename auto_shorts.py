@@ -29,11 +29,11 @@ def clean_id(folder_id):
     cleaned = re.sub(r'[^a-zA-Z0-9_-]', '', folder_id)
     return cleaned.strip()
 
-# DISAMAKAN DENGAN SCREENSHOT GITHUB ANDA
 UPLOTAN_ID = clean_id(os.environ.get('UPLOTAN_FOLDER_ID', ''))
-SELESAI_ID = clean_id(os.environ.get('PROCESSED_FOLDER_ID', '')) # Perubahan di sini
+SELESAI_ID = clean_id(os.environ.get('PROCESSED_FOLDER_ID', ''))
 
 def get_services(token_b64, secret_b64, label):
+    """Autentikasi API menggunakan Base64 token."""
     try:
         if not token_b64 or not secret_b64:
             return None, None
@@ -49,15 +49,24 @@ def get_services(token_b64, secret_b64, label):
         print(f"⚠️ {label} Gagal Login: {e}")
         return None, None
 
-def upload_to_youtube(youtube, file_path, title, label):
+def upload_to_youtube(youtube, file_path, metadata_text, label):
+    """Proses upload dengan jadwal publikasi 45 menit ke depan."""
+    print(f"[*] Menggunakan {label} untuk upload...")
+    
+    # 1. Hitung waktu publikasi (45 menit dari sekarang dalam format UTC ISO 8601)
+    publish_time = (datetime.utcnow() + timedelta(minutes=45)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    
+    # 2. Susun Metadata (Mengambil dari deskripsi file Drive)
+    # Gunakan metadata_text sebagai judul dan deskripsi
     body = {
         'snippet': {
-            'title': title[:100],
-            'description': f"{title}\n\n#shorts #viral #otomasi",
-            'categoryId': '22' 
+            'title': metadata_text[:100], # Maksimal 100 karakter untuk judul
+            'description': f"{metadata_text}\n\n#shorts #viral #otomasi",
+            'categoryId': '22' # People & Blogs
         },
         'status': {
-            'privacyStatus': 'public', 
+            'privacyStatus': 'private',  # Wajib private agar bisa dijadwalkan
+            'publishAt': publish_time,   # Jadwal publikasi
             'selfDeclaredMadeForKids': False
         }
     }
@@ -67,35 +76,32 @@ def upload_to_youtube(youtube, file_path, title, label):
     
     try:
         response = request.execute()
-        return response.get('id'), None
+        return response.get('id'), publish_time
     except HttpError as e:
         if e.resp.status == 403:
             return None, "QUOTA_EXCEEDED"
         return None, str(e)
 
 def main():
-    print("=== ROBOT PENGUNGGAH DUAL-TOKEN (FIXED ID) ===")
+    print("=== ROBOT PENGUNGGAH DUAL-TOKEN (SCHEDULE 45M) ===")
     
-    # Validasi ID Folder
-    if not UPLOTAN_ID:
-        print("⛔ ERROR: UPLOTAN_FOLDER_ID belum diisi di GitHub Secrets!")
-        return
-    if not SELESAI_ID:
-        print("⛔ ERROR: PROCESSED_FOLDER_ID belum diisi di GitHub Secrets!")
+    if not UPLOTAN_ID or not SELESAI_ID:
+        print("⛔ ERROR: ID Folder belum diisi!")
         return
 
-    # 1. Login & Cari Video
+    # 1. Cari video di Drive menggunakan kunci pertama yang tersedia
     drive_service = None
     for cred in CREDENTIAL_SETS:
         drive_service, _ = get_services(cred['token'], cred['secret'], cred['label'])
         if drive_service: break
 
     if not drive_service:
-        print("⛔ Semua kunci gagal login.")
+        print("⛔ Semua kunci gagal login ke Google Drive.")
         return
 
+    # Ambil file dengan menyertakan kolom 'description'
     query = f"'{UPLOTAN_ID}' in parents and mimeType='video/mp4' and trashed=false"
-    res = drive_service.files().list(q=query, orderBy="createdTime", pageSize=1).execute()
+    res = drive_service.files().list(q=query, orderBy="createdTime", pageSize=1, fields="files(id, name, description)").execute()
     files = res.get('files', [])
 
     if not files:
@@ -104,40 +110,48 @@ def main():
 
     video_file = files[0]
     file_id = video_file['id']
-    judul = video_file['name'].replace('.mp4', '')
+    
+    # AMBIL JUDUL DARI DESKRIPSI FILE DRIVE (Jika kosong, pakai nama file)
+    metadata_text = video_file.get('description', video_file['name'].replace('.mp4', ''))
+    print(f"[*] Menyiapkan Video: {video_file['name']}")
+    print(f"[*] Metadata ditemukan: {metadata_text[:50]}...")
 
-    # 2. Download
-    temp_file = "temp_dual.mp4"
+    # 2. Download video ke server sementara
+    temp_file = "upload_temp.mp4"
     request = drive_service.files().get_media(fileId=file_id)
     with io.FileIO(temp_file, 'wb') as fh:
         downloader = MediaIoBaseDownload(fh, request)
         done = False
         while not done: _, done = downloader.next_chunk()
 
-    # 3. Upload Failover
+    # 3. Jalankan Upload dengan strategi Failover
     success_upload = False
     for cred in CREDENTIAL_SETS:
         _, youtube = get_services(cred['token'], cred['secret'], cred['label'])
         if not youtube: continue
 
-        video_id, error_status = upload_to_youtube(youtube, temp_file, judul, cred['label'])
+        video_id, result = upload_to_youtube(youtube, temp_file, metadata_text, cred['label'])
         
         if video_id:
-            print(f"[✅] SUKSES! Video ID: {video_id} (Via {cred['label']})")
+            print(f"[✅] BERHASIL! Video ID: {video_id}")
+            print(f"[⏰] Terjadwal tayang pada: {result} (45 Menit lagi)")
             success_upload = True
             break
-        elif error_status == "QUOTA_EXCEEDED":
-            print(f"⚠️ {cred['label']} KUOTA HABIS. Mencoba kunci selanjutnya...")
+        elif result == "QUOTA_EXCEEDED":
+            print(f"⚠️ {cred['label']} KUOTA HABIS. Mencoba kunci cadangan...")
             continue
+        else:
+            print(f"❌ Gagal dengan {cred['label']}: {result}")
 
-    # 4. Pindahkan file
+    # 4. Pindahkan file jika upload berhasil
     if success_upload:
+        print("[*] Memindahkan file ke folder arsip...")
         drive_service.files().update(
             fileId=file_id, 
             addParents=SELESAI_ID, 
             removeParents=UPLOTAN_ID
         ).execute()
-        print("[✨] Berhasil dipindahkan ke folder selesai!")
+        print("[✨] Selesai!")
     
     if os.path.exists(temp_file): os.remove(temp_file)
 
