@@ -11,7 +11,6 @@ from google.auth.transport.requests import Request
 from googleapiclient.errors import HttpError
 
 # --- KONFIGURASI DARI GITHUB SECRETS ---
-# Kita definisikan dua set kredensial
 CREDENTIAL_SETS = [
     {
         'label': 'KUNCI UTAMA (A)',
@@ -30,24 +29,19 @@ def clean_id(folder_id):
     cleaned = re.sub(r'[^a-zA-Z0-9_-]', '', folder_id)
     return cleaned.strip()
 
+# DISAMAKAN DENGAN SCREENSHOT GITHUB ANDA
 UPLOTAN_ID = clean_id(os.environ.get('UPLOTAN_FOLDER_ID', ''))
-SELESAI_ID = clean_id(os.environ.get('PROCESSED_FOLDER_ID', ''))
+SELESAI_ID = clean_id(os.environ.get('PROCESSED_FOLDER_ID', '')) # Perubahan di sini
 
 def get_services(token_b64, secret_b64, label):
-    """Melakukan autentikasi menggunakan set token tertentu."""
     try:
         if not token_b64 or not secret_b64:
-            print(f"⚠️ {label}: Data secret/token tidak ditemukan di GitHub.")
             return None, None
             
         creds = pickle.loads(base64.b64decode(token_b64))
         if creds.expired and creds.refresh_token:
             creds.refresh(Request())
         
-        # Buat file sementara secrets.json untuk kebutuhan internal library
-        with open(f"secrets_{label.replace(' ', '_')}.json", "wb") as f:
-            f.write(base64.b64decode(secret_b64))
-            
         drive = build('drive', 'v3', credentials=creds)
         youtube = build('youtube', 'v3', credentials=creds)
         return drive, youtube
@@ -56,9 +50,6 @@ def get_services(token_b64, secret_b64, label):
         return None, None
 
 def upload_to_youtube(youtube, file_path, title, label):
-    """Proses upload video ke YouTube."""
-    print(f"[*] Menggunakan {label} untuk upload: {title}")
-    
     body = {
         'snippet': {
             'title': title[:100],
@@ -75,49 +66,47 @@ def upload_to_youtube(youtube, file_path, title, label):
     request = youtube.videos().insert(part='snippet,status', body=body, media_body=media)
     
     try:
-        response = None
-        while response is None:
-            status, response = request.next_chunk()
-            if status:
-                print(f"   - Progress {label}: {int(status.progress() * 100)}%")
+        response = request.execute()
         return response.get('id'), None
     except HttpError as e:
-        # Deteksi jika kuota habis (Error 403)
         if e.resp.status == 403:
             return None, "QUOTA_EXCEEDED"
         return None, str(e)
 
 def main():
-    print("=== ROBOT PENGUNGGAH DUAL-TOKEN (SMART FAILOVER) ===")
+    print("=== ROBOT PENGUNGGAH DUAL-TOKEN (FIXED ID) ===")
     
-    if not UPLOTAN_ID or not SELESAI_ID:
-        print("⛔ ERROR: ID Folder belum diisi!")
+    # Validasi ID Folder
+    if not UPLOTAN_ID:
+        print("⛔ ERROR: UPLOTAN_FOLDER_ID belum diisi di GitHub Secrets!")
+        return
+    if not SELESAI_ID:
+        print("⛔ ERROR: PROCESSED_FOLDER_ID belum diisi di GitHub Secrets!")
         return
 
-    # 1. Cari video tertua (antrean) menggunakan Kunci A (sebagai pembuka pintu Drive)
-    # Kita coba login pakai Kunci A dulu untuk cek file
+    # 1. Login & Cari Video
     drive_service = None
     for cred in CREDENTIAL_SETS:
         drive_service, _ = get_services(cred['token'], cred['secret'], cred['label'])
         if drive_service: break
 
     if not drive_service:
-        print("⛔ Semua kunci gagal login ke Drive.")
+        print("⛔ Semua kunci gagal login.")
         return
 
     query = f"'{UPLOTAN_ID}' in parents and mimeType='video/mp4' and trashed=false"
-    res = drive_service.files().list(q=query, orderBy="createdTime", pageSize=1, fields="files(id, name, description)").execute()
+    res = drive_service.files().list(q=query, orderBy="createdTime", pageSize=1).execute()
     files = res.get('files', [])
 
     if not files:
-        print("[-] Tidak ada video di folder UPLOTAN.")
+        print("[-] Tidak ada video di folder uplotan.")
         return
 
     video_file = files[0]
     file_id = video_file['id']
-    judul = video_file.get('description', video_file['name'].replace('.mp4', ''))
+    judul = video_file['name'].replace('.mp4', '')
 
-    # 2. Download video
+    # 2. Download
     temp_file = "temp_dual.mp4"
     request = drive_service.files().get_media(fileId=file_id)
     with io.FileIO(temp_file, 'wb') as fh:
@@ -125,7 +114,7 @@ def main():
         done = False
         while not done: _, done = downloader.next_chunk()
 
-    # 3. Jalankan Upload dengan strategi Failover
+    # 3. Upload Failover
     success_upload = False
     for cred in CREDENTIAL_SETS:
         _, youtube = get_services(cred['token'], cred['secret'], cred['label'])
@@ -140,24 +129,17 @@ def main():
         elif error_status == "QUOTA_EXCEEDED":
             print(f"⚠️ {cred['label']} KUOTA HABIS. Mencoba kunci selanjutnya...")
             continue
-        else:
-            print(f"❌ Gagal dengan {cred['label']}: {error_status}")
 
-    # 4. Pindahkan file jika upload berhasil di salah satu kunci
+    # 4. Pindahkan file
     if success_upload:
-        print("[*] Memindahkan file ke folder SELESAI...")
         drive_service.files().update(
             fileId=file_id, 
             addParents=SELESAI_ID, 
             removeParents=UPLOTAN_ID
         ).execute()
-        print("[✨] Selesai!")
+        print("[✨] Berhasil dipindahkan ke folder selesai!")
     
-    # Pembersihan
     if os.path.exists(temp_file): os.remove(temp_file)
-    for cred in CREDENTIAL_SETS:
-        f_name = f"secrets_{cred['label'].replace(' ', '_')}.json"
-        if os.path.exists(f_name): os.remove(f_name)
 
 if __name__ == "__main__":
     main()
