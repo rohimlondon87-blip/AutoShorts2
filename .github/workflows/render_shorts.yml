@@ -1,17 +1,16 @@
-name: Auto Render & Process Shorts
+name: Auto Rain Live Stream
 
 on:
   schedule:
-    # Mengatur jadwal render otomatis. 
-    # Contoh: '0 18 * * *' berarti jam 02:00 WITA / 01:00 WIB.
-    - cron: '0 18 * * *'
-  workflow_dispatch: # Memungkinkan menjalankan secara manual dari tab Actions
+    # 15:00 UTC = 22:00 WIB / 23:00 WITA.
+    - cron: '0 15 * * *'
+  workflow_dispatch:
 
 jobs:
-  render_shorts:
+  live_session:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Install FFmpeg
@@ -24,16 +23,15 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Dependencies
+      - name: Install Library
         run: |
           pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
 
-      - name: Jalankan Robot Render
+      - name: Jalankan Robot Live (Via Proyek B)
         env:
-          # Pastikan semua Secret ini sudah terisi di Settings > Secrets > Actions
-          TOKEN_DATA_B: ${{ secrets.TOKEN_DATA }}
+          # Diarahkan ke TOKEN_DATA_B agar hemat kuota Proyek A
+          TOKEN_DATA: ${{ secrets.TOKEN_DATA_B }}
           SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
           MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
-          UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
-          QUOTES_FILE_ID: ${{ secrets.QUOTES_FILE_ID }}
-        run: python render_shorts_auto.py
+          YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
+        run: python auto_live_rain.py
