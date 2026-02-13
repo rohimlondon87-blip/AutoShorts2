@@ -28,9 +28,9 @@ jobs:
 
       - name: Jalankan Robot Render (Via Proyek B)
         env:
-          # --- PENTING: KITA ARAHKAN KE KUNCI B ---
-          TOKEN_DATA: ${{ secrets.TOKEN_DATA_B }}
-          CLIENT_SECRETS_DATA: ${{ secrets.CLIENT_SECRETS_DATA_B }}
+          # --- PERBAIKAN DI SINI: NAMA HARUS TOKEN_DATA_B ---
+          TOKEN_DATA_B: ${{ secrets.TOKEN_DATA_B }}
+          CLIENT_SECRETS_DATA_B: ${{ secrets.CLIENT_SECRETS_DATA_B }}
           
           # ID Folder
           SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
