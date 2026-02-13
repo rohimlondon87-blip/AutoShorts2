@@ -1,13 +1,13 @@
-name: Auto Rain Live Stream
+name: Auto Render Shorts
 
 on:
   schedule:
-    # 15:00 UTC = 22:00 WIB / 23:00 WITA.
-    - cron: '0 15 * * *'
+    # Berjalan setiap 6 jam sekali agar stok video di Uplotan selalu ada
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 jobs:
-  live_session:
+  render:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -23,15 +23,18 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Library
-        run: |
-          pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
+      - name: Install Dependencies
+        run: pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
 
-      - name: Jalankan Robot Live (Via Proyek B)
+      - name: Jalankan Robot Render (Via Proyek B)
         env:
-          # Diarahkan ke TOKEN_DATA_B agar hemat kuota Proyek A
+          # --- PENTING: KITA ARAHKAN KE KUNCI B ---
           TOKEN_DATA: ${{ secrets.TOKEN_DATA_B }}
+          CLIENT_SECRETS_DATA: ${{ secrets.CLIENT_SECRETS_DATA_B }}
+          
+          # ID Folder
           SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
           MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
-          YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
-        run: python auto_live_rain.py
+          UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
+          QUOTES_FILE_ID: ${{ secrets.QUOTES_FILE_ID }}
+        run: python render_shorts_auto.py
