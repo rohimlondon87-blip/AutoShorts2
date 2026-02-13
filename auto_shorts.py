@@ -26,7 +26,6 @@ CREDENTIAL_SETS = [
 
 def clean_id(folder_id):
     if not folder_id: return ""
-    # Membersihkan ID dari spasi atau karakter aneh yang sering terbawa saat copypaste
     cleaned = re.sub(r'[^a-zA-Z0-9_-]', '', folder_id)
     return cleaned.strip()
 
@@ -40,6 +39,7 @@ def get_services(token_b64, secret_b64, label):
         creds = pickle.loads(base64.b64decode(token_b64))
         if creds.expired and creds.refresh_token:
             creds.refresh(Request())
+        # Mendukung Shared Drive jika ada
         drive = build('drive', 'v3', credentials=creds)
         youtube = build('youtube', 'v3', credentials=creds)
         return drive, youtube
@@ -76,32 +76,36 @@ def upload_to_youtube(youtube, file_path, metadata_text, label):
         return None, str(e)
 
 def main():
-    print("=== ROBOT PENGUNGGAH DUAL-TOKEN (FIXED MOVE) ===")
+    print("=== ROBOT PENGUNGGAH DUAL-TOKEN (ROBUST MOVE) ===")
     
     if not UPLOTAN_ID or not SELESAI_ID:
-        print("⛔ ERROR: ID Folder Uplotan atau Selesai belum diisi di Secrets!")
+        print("⛔ ERROR: ID Folder belum diisi lengkap!")
         return
 
-    # 1. Pilih Kunci yang Aktif untuk Drive
+    # 1. Pilih Kunci Aktif
     drive_service = None
-    active_label = ""
     for cred in CREDENTIAL_SETS:
         drive_service, _ = get_services(cred['token'], cred['secret'], cred['label'])
-        if drive_service:
-            active_label = cred['label']
-            break
+        if drive_service: break
 
     if not drive_service:
-        print("⛔ Semua kunci gagal login ke Drive.")
+        print("⛔ Semua kunci gagal login.")
         return
 
-    # 2. Cari Video
+    # 2. Cari Video (Sertakan field 'parents')
     try:
         query = f"'{UPLOTAN_ID}' in parents and mimeType='video/mp4' and trashed=false"
-        res = drive_service.files().list(q=query, orderBy="createdTime", pageSize=1, fields="files(id, name, description)").execute()
+        res = drive_service.files().list(
+            q=query, 
+            orderBy="createdTime", 
+            pageSize=1, 
+            fields="files(id, name, description, parents)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute()
         files = res.get('files', [])
     except HttpError as e:
-        print(f"⛔ Gagal listing folder: {e}")
+        print(f"⛔ Gagal akses Drive: {e}")
         return
 
     if not files:
@@ -110,8 +114,9 @@ def main():
 
     video_file = files[0]
     file_id = video_file['id']
+    # Ambil parent asli dari sistem Drive
+    current_parents = ",".join(video_file.get('parents', []))
     metadata_text = video_file.get('description', video_file['name'].replace('.mp4', ''))
-    print(f"[*] Menyiapkan: {video_file['name']}")
 
     # 3. Download
     temp_file = "upload_temp.mp4"
@@ -134,8 +139,7 @@ def main():
         video_id, result = upload_to_youtube(youtube, temp_file, metadata_text, cred['label'])
         
         if video_id:
-            print(f"[✅] BERHASIL! Video ID: {video_id}")
-            print(f"[⏰] Terjadwal tayang: {result}")
+            print(f"[✅] BERHASIL UPLOAD! Video ID: {video_id}")
             success_upload = True
             break
         elif result == "QUOTA_EXCEEDED":
@@ -144,24 +148,28 @@ def main():
         else:
             print(f"❌ Gagal dengan {cred['label']}: {result}")
 
-    # 5. Pindahkan File (PENTING: Error handling khusus agar tidak crash)
+    # 5. Pindahkan File (Logika Move yang diperbaiki)
     if success_upload:
-        print(f"[*] Memindahkan file {file_id} ke folder Selesai...")
+        print(f"[*] Memindahkan file ke folder Selesai (ID: {SELESAI_ID})...")
         try:
-            # Menggunakan API Drive untuk memindahkan file
+            # Gunakan current_parents yang didapat dari langkah 2
             drive_service.files().update(
-                fileId=file_id, 
-                addParents=SELESAI_ID, 
-                removeParents=UPLOTAN_ID,
-                fields='id, parents'
+                fileId=file_id,
+                addParents=SELESAI_ID,
+                removeParents=current_parents,
+                fields='id, parents',
+                supportsAllDrives=True
             ).execute()
             print("[✨] Berhasil dipindahkan!")
         except HttpError as e:
-            print(f"⚠️ PERINGATAN: Video terupload TAPI gagal dipindahkan ke folder Selesai.")
-            print(f"Cek ID Folder Selesai: {SELESAI_ID}")
-            print(f"Detail Error: {e}")
-            # Opsional: Jika gagal pindah, kita hapus saja file aslinya agar tidak upload dobel
-            # drive_service.files().delete(fileId=file_id).execute()
+            print(f"⚠️ Gagal pindah folder: {e.reason}")
+            print("[!] Mencoba metode hapus sebagai langkah terakhir...")
+            try:
+                # Jika tidak bisa dipindah, kita hapus saja agar tidak di-upload ulang nanti
+                drive_service.files().delete(fileId=file_id, supportsAllDrives=True).execute()
+                print("[🗑️] File asli dihapus dari folder uplotan.")
+            except:
+                print("❌ Gagal menghapus file. Harap pindahkan manual agar tidak upload dobel.")
     
     if os.path.exists(temp_file): os.remove(temp_file)
 
