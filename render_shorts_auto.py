@@ -17,7 +17,7 @@ MUSIC_FOLDER_ID = os.environ.get('MUSIC_FOLDER_ID')
 UPLOTAN_FOLDER_ID = os.environ.get('UPLOTAN_FOLDER_ID') 
 QUOTES_FILE_ID = os.environ.get('QUOTES_FILE_ID') 
 
-MAX_DURATION = 15 
+MAX_DURATION = 25 
 
 def find_font():
     paths = [
