@@ -1,12 +1,9 @@
-name: Auto Upload Shorts (Dual Token - 10x Daily)
+name: Auto Upload Shorts (Dual Token)
 
 on:
   schedule:
-    # Jadwal 10x dalam 24 jam (Waktu UTC)
-    # UTC: 22, 00, 02, 04, 06, 08, 10, 12, 14, 16
-    # WITA: 06, 08, 10, 12, 14, 16, 18, 20, 22, 00
     - cron: '0 22,0,2,4,6,8,10,12,14,16 * * *'
-  workflow_dispatch: # Memungkinkan upload manual tambahan
+  workflow_dispatch:
 
 jobs:
   upload_process:
@@ -25,13 +22,13 @@ jobs:
 
       - name: Jalankan Robot Dual Token
         env:
-          # Kunci A (Proyek 1)
+          # Kunci A
           CLIENT_SECRETS_DATA: ${{ secrets.CLIENT_SECRETS_DATA }}
           TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
-          # Kunci B (Proyek 2)
+          # Kunci B
           CLIENT_SECRETS_DATA_B: ${{ secrets.CLIENT_SECRETS_DATA_B }}
           TOKEN_DATA_B: ${{ secrets.TOKEN_DATA_B }}
-          # Folder Drive
+          # ID Folder (Harus Sama dengan Nama di Secrets GitHub)
           UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
-          PROCESSED_FOLDER_ID: ${{ secrets.SPROCESSED_FOLDER_ID }}
+          PROCESSED_FOLDER_ID: ${{ secrets.PROCESSED_FOLDER_ID }}
         run: python auto_shorts.py
