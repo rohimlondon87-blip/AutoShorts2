@@ -1,37 +1,37 @@
-name: Auto Shorts Uploader
+name: Auto Upload Shorts (Dual Token - 10x Daily)
 
 on:
   schedule:
-    # Berjalan 6 kali sehari (Setiap 4 jam)
-    # Jam 22, 2, 6, 10, 14, 18 UTC 
-    # Sama dengan Jam 5, 9, 13, 17, 21, 1 WIB
-    - cron: '0 2,6,10,14,18,22 * * *'
-  workflow_dispatch:      # Tombol untuk menjalankan manual
+    # Jadwal 10x dalam 24 jam (Waktu UTC)
+    # UTC: 22, 00, 02, 04, 06, 08, 10, 12, 14, 16
+    # WITA: 06, 08, 10, 12, 14, 16, 18, 20, 22, 00
+    - cron: '0 22,0,2,4,6,8,10,12,14,16 * * *'
+  workflow_dispatch: # Memungkinkan upload manual tambahan
 
 jobs:
-  run_bot:
+  upload_process:
     runs-on: ubuntu-latest
     steps:
-      - name: Ambil Kode
-        uses: actions/checkout@v3
-
-      - name: Install FFmpeg (Wajib untuk MoviePy)
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install Library
-        run: pip install google-api-python-client google-auth-oauthlib google-auth-httplib2 google-generativeai moviepy==1.0.3
+      - name: Install Dependencies
+        run: pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
 
-      - name: Jalankan Robot
+      - name: Jalankan Robot Dual Token
         env:
+          # Kunci A (Proyek 1)
           CLIENT_SECRETS_DATA: ${{ secrets.CLIENT_SECRETS_DATA }}
           TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
-          SOURCE_FOLDER_ID: ${{ secrets.SOURCE_FOLDER_ID }}
-          PROCESSED_FOLDER_ID: ${{ secrets.PROCESSED_FOLDER_ID }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          YOUTUBE_PRIVACY: ${{ secrets.YOUTUBE_PRIVACY }}
+          # Kunci B (Proyek 2)
+          CLIENT_SECRETS_DATA_B: ${{ secrets.CLIENT_SECRETS_DATA_B }}
+          TOKEN_DATA_B: ${{ secrets.TOKEN_DATA_B }}
+          # Folder Drive
+          UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
+          SHORT_SELESAI_ID: ${{ secrets.SHORT_SELESAI_ID }}
         run: python auto_shorts.py
