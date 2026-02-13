@@ -31,7 +31,7 @@ jobs:
       - name: Jalankan Robot Render
         env:
           # Pastikan semua Secret ini sudah terisi di Settings > Secrets > Actions
-          TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
+          TOKEN_DATA_B: ${{ secrets.TOKEN_DATA }}
           SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
           MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
           UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
