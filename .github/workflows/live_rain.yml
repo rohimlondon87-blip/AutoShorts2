@@ -1,33 +1,31 @@
-name: Auto Rain Live Stream
+name: Auto Live Stream (Token B)
 
 on:
   schedule:
-    - cron: '0 15 * * *'
+    # Jam 15:00 WITA (07:00 UTC)
+    - cron: '0 7 * * *' 
   workflow_dispatch:
 
 jobs:
-  live_session:
+  live:
     runs-on: ubuntu-latest
     steps:
-      - name: Ambil Kode
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
-      - name: Install Library
-        run: pip install google-api-python-client google-auth-oauthlib google-auth-httplib2 google-generativeai
-
-      - name: Jalankan Robot Live
+      - run: pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
+      
+      - name: Jalankan Live (Via Proyek B)
         env:
-          TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
+          # --- PERUBAHAN UTAMA: MENGGUNAKAN KUNCI B ---
+          TOKEN_DATA: ${{ secrets.TOKEN_DATA_B }}
+          CLIENT_SECRETS_DATA: ${{ secrets.CLIENT_SECRETS_DATA_B }}
+          
+          # Konfigurasi Lainnya
           SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
           MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
         run: python auto_live_rain.py
