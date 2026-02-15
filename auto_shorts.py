@@ -64,7 +64,7 @@ def upload_to_youtube(youtube, file_path, metadata_text, label):
             'categoryId': '22'
         },
         'status': {
-            'privacyStatus': 'public', # SET KE PUBLIK LANGSUNG
+            'privacyStatus': 'private', # SET KE PUBLIK LANGSUNG
             'selfDeclaredMadeForKids': False
         }
     }
