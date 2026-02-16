@@ -32,53 +32,56 @@ UPLOTAN_ID = clean_id(os.environ.get('UPLOTAN_FOLDER_ID', ''))
 SELESAI_ID = clean_id(os.environ.get('PROCESSED_FOLDER_ID', ''))
 
 def get_services(token_b64, secret_b64, label):
-    """Fungsi login dengan perbaikan otomatis untuk error padding."""
+    """Fungsi login Cerdas (Auto-Fix Padding)."""
     try:
         if not token_b64 or not secret_b64:
             return None, None
-            
-        token_b64 = token_b64.strip()
-        secret_b64 = secret_b64.strip()
         
-        # Tambahkan padding '=' jika kurang (Mengatasi error padding Base64)
+        token_b64 = token_b64.strip().replace(" ", "").replace("\n", "")
+        secret_b64 = secret_b64.strip().replace(" ", "").replace("\n", "")
+        
         missing_padding = len(token_b64) % 4
         if missing_padding:
             token_b64 += '=' * (4 - missing_padding)
-            
+
         creds = pickle.loads(base64.b64decode(token_b64))
         if creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+            try:
+                creds.refresh(Request())
+            except Exception as e:
+                print(f"⚠️ {label}: Token Expired & Gagal Refresh ({e})")
+                return None, None
             
         drive = build('drive', 'v3', credentials=creds)
         youtube = build('youtube', 'v3', credentials=creds)
         return drive, youtube
+
     except Exception as e:
-        print(f"⚠️ {label} Gagal: {e}")
+        print(f"⚠️ {label} Gagal Login: {e}")
         return None, None
 
-def upload_to_youtube(youtube, file_path, metadata_text):
-    """Proses upload dengan logika Private 45 menit."""
+def get_channel_info(youtube):
     try:
-        # Cek nama channel untuk konfirmasi di log
-        ch = youtube.channels().list(part='snippet', mine=True).execute()
-        ch_name = ch['items'][0]['snippet']['title']
-    except: ch_name = "Unknown Channel"
+        response = youtube.channels().list(part='snippet', mine=True).execute()
+        return response['items'][0]['snippet']['title']
+    except:
+        return "Unknown Channel"
 
-    print(f"[*] Target Upload: {ch_name}")
+def upload_to_youtube(youtube, file_path, metadata_text, label):
+    channel_name = get_channel_info(youtube)
+    print(f"[*] Target Upload: {channel_name} (Via {label})")
     
-    # LOGIKA UTAMA: Jadwalkan 45 menit ke depan (Waktu UTC)
-    now = datetime.utcnow()
-    publish_time = (now + timedelta(minutes=45)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    publish_time = (datetime.utcnow() + timedelta(minutes=45)).strftime('%Y-%m-%dT%H:%M:%SZ')
     
     body = {
         'snippet': {
             'title': metadata_text[:100],
-            'description': f"{metadata_text}\n\n#shorts #viral #mucrowild",
+            'description': f"{metadata_text}\n\n#shorts #viral #perjuangan #kehidupan",
             'categoryId': '22'
         },
         'status': {
-            'privacyStatus': 'private', # Wajib Private agar 'publishAt' bisa berfungsi
-            'publishAt': publish_time,   # YouTube akan mempublikasikan otomatis di waktu ini
+            'privacyStatus': 'private', 
+            'publishAt': publish_time,
             'selfDeclaredMadeForKids': False
         }
     }
@@ -87,78 +90,103 @@ def upload_to_youtube(youtube, file_path, metadata_text):
     request = youtube.videos().insert(part='snippet,status', body=body, media_body=media)
     
     try:
-        response = request.execute()
+        response = None
+        while response is None:
+            status, response = request.next_chunk()
+            if status:
+                print(f"    -> Uploading: {int(status.progress() * 100)}%", end='\r')
+        
+        print("") 
         return response.get('id'), publish_time
     except HttpError as e:
-        if "quotaExceeded" in str(e): return None, "QUOTA_FULL"
+        if e.resp.status == 403: return None, "QUOTA_EXCEEDED"
         return None, str(e)
 
 def main():
-    print("=== ROBOT PENGUNGGAH SHORTS (LOGIKA 45 MENIT) ===")
+    print("=== ROBOT UPLOAD SHORTS (METODE ANTREAN: TERLAMA DULU) ===")
     
-    # 1. Pilih Kunci Drive yang Aktif
+    if not UPLOTAN_ID:
+        print("⛔ ERROR: Folder Uplotan ID kosong.")
+        return
+
+    # 1. Login Drive
     drive_service = None
     for cred in CREDENTIAL_SETS:
         drive_service, _ = get_services(cred['token'], cred['secret'], cred['label'])
         if drive_service: break
 
     if not drive_service:
-        print("⛔ ERROR: Tidak ada token yang valid untuk akses Drive.")
+        print("⛔ SEMUA KUNCI GAGAL.")
         return
 
-    # 2. Cari Video Baru di Folder Uplotan
+    # 2. Cari Video (PERBAIKAN ORDER BY)
+    # orderBy='createdTime' -> Ascending (Terlama ke Terbaru)
+    # trashed=false -> Jangan ambil yang di sampah
     query = f"'{UPLOTAN_ID}' in parents and mimeType='video/mp4' and not name contains '[UPLOADED]' and trashed=false"
-    res = drive_service.files().list(q=query, orderBy="createdTime", pageSize=1, fields="files(id, name, description, parents)").execute()
-    files = res.get('files', [])
+    try:
+        res = drive_service.files().list(
+            q=query, 
+            orderBy="createdTime", # KUNCI: Tanpa 'desc' berarti ambil yang paling tua
+            pageSize=1, 
+            fields="files(id, name, description, createdTime, parents)"
+        ).execute()
+        files = res.get('files', [])
+    except Exception as e:
+        print(f"⛔ Gagal baca Drive: {e}")
+        return
 
     if not files:
-        print("[-] Folder uplotan kosong. Menunggu hasil render baru...")
+        print("[-] Antrean kosong. Robot istirahat.")
         return
 
     video_file = files[0]
     file_id = video_file['id']
     file_name = video_file['name']
+    file_time = video_file['createdTime']
     curr_parents = ",".join(video_file.get('parents', []))
     meta_text = video_file.get('description', file_name.replace('.mp4', ''))
 
-    # 3. Download ke Server Sementara
-    print(f"[*] Mendownload: {file_name}")
-    temp_v = "temp_upload.mp4"
+    print(f"[*] Mengambil Antrean Terdepan (Paling Lama)")
+    print(f"    🎬 File  : {file_name}")
+    print(f"    📅 Dibuat: {file_time}") # Cek tanggal ini di log untuk memastikan
+
+    # 3. Download
+    print(f"[*] Menyiapkan proses download...")
+    temp_v = "upload_temp.mp4"
     request = drive_service.files().get_media(fileId=file_id)
     with io.FileIO(temp_v, 'wb') as fh:
         downloader = MediaIoBaseDownload(fh, request)
         done = False
         while not done: _, done = downloader.next_chunk()
 
-    # 4. Upload dengan Sistem Estafet (Failover A -> B)
+    # 4. Upload Failover
     success = False
     for cred in CREDENTIAL_SETS:
         _, youtube = get_services(cred['token'], cred['secret'], cred['label'])
         if not youtube: continue
 
-        video_id, result = upload_to_youtube(youtube, temp_v, meta_text)
+        video_id, result = upload_to_youtube(youtube, temp_v, meta_text, cred['label'])
         if video_id:
-            print(f"[✅] BERHASIL UPLOAD! ID: {video_id}")
-            print(f"[⏰] Status: Private (Akan Publik Otomatis pada {result} UTC)")
+            print(f"\n[✅] BERHASIL! ID: {video_id}")
+            print(f"[⏰] Jadwal Tayang: {result} UTC")
             success = True
             break
-        elif result == "QUOTA_FULL":
-            print(f"⚠️ {cred['label']} Kuota Habis. Mencoba Kunci Cadangan...")
-            continue
+        elif result == "QUOTA_EXCEEDED":
+            print(f"\n⚠️ {cred['label']} Habis. Pindah ke cadangan...")
         else:
-            print(f"❌ Gagal dengan {cred['label']}: {result}")
+            print(f"\n❌ {cred['label']} Error: {result}")
 
-    # 5. Penandaan File (Rename atau Pindah Folder)
+    # 5. Tandai Selesai
     if success:
-        print("[*] Menandai file di Drive agar tidak double upload...")
+        print("[*] Membersihkan antrean...")
         try:
             if SELESAI_ID:
                 drive_service.files().update(fileId=file_id, addParents=SELESAI_ID, removeParents=curr_parents).execute()
-                print("[✨] Berhasil dipindahkan ke folder Selesai.")
-            else: raise Exception()
+                print("[✨] File dipindahkan ke Arsip.")
+            else: raise Exception
         except:
             drive_service.files().update(fileId=file_id, body={'name': f"[UPLOADED]_{file_name}"}).execute()
-            print(f"[🏷️] Berhasil ditandai: [UPLOADED]_{file_name}")
+            print("[🏷️] File ditandai [UPLOADED].")
 
     if os.path.exists(temp_v): os.remove(temp_v)
 
