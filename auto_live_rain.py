@@ -5,22 +5,26 @@ import subprocess
 import random
 import sys
 import io
+import json
 import time
+from datetime import datetime
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from google.auth.transport.requests import Request
 
-# --- KONFIGURASI TOKEN A ---
+# --- KONFIGURASI TUNGGAL (TOKEN A) ---
 TOKEN_B64 = os.environ.get('TOKEN_DATA')
-SOURCE_ID = os.environ.get('SOURCE_LIVE_ID')      # ID Folder Video
-MUSIC_ID = os.environ.get('MUSIC_FOLDER_ID')    # ID Folder Musik
+SOURCE_ID = os.environ.get('SOURCE_LIVE_ID')      # Folder Video Latar
+MUSIC_ID = os.environ.get('MUSIC_FOLDER_ID')    # Folder Musik MP3
 STREAM_KEY = os.environ.get('YOUTUBE_STREAM_KEY') # Kunci Live YouTube
 
-# Durasi live (detik)
+# Durasi live (45 - 60 menit)
 LIVE_DURATION_SEC = random.randint(2700, 3600) 
+# Jeda awal 0-1 menit
+DELAY_MENIT = random.randint(0, 1)
 
 def get_services():
-    """Login menggunakan Token A saja."""
+    """Autentikasi Token A dengan pembersihan karakter."""
     try:
         if not TOKEN_B64:
             print("⛔ ERROR: TOKEN_DATA tidak ditemukan!")
@@ -36,11 +40,11 @@ def get_services():
         
         return build('drive', 'v3', credentials=creds)
     except Exception as e:
-        print(f"⛔ Gagal Login: {e}")
+        print(f"⛔ GAGAL LOGIN: {e}")
         return None
 
 def download_file(service, file_id, output_name):
-    """Fungsi download standar."""
+    """Download file dari Drive."""
     try:
         request = service.files().get_media(fileId=file_id)
         with io.FileIO(output_name, 'wb') as fh:
@@ -51,14 +55,64 @@ def download_file(service, file_id, output_name):
         return True
     except: return False
 
-def main():
-    print(f"=== ROBOT LIVE: VERSI ARSIP (TOKEN A) ===")
+def get_video_rotation(path):
+    """Membaca metadata rotasi asli video (0, 90, 180, 270)."""
+    try:
+        cmd = [
+            'ffprobe', '-loglevel', 'error', '-select_streams', 'v:0',
+            '-show_entries', 'stream_tags=rotate', '-of', 'json', path
+        ]
+        result = subprocess.check_output(cmd).decode('utf-8')
+        data = json.loads(result)
+        tags = data.get('streams', [{}])[0].get('tags', {})
+        return int(tags.get('rotate', 0))
+    except:
+        return 0
+
+def standardize_video(input_path, output_path):
+    """
+    PROSES KUNCI: Menormalkan setiap video satu per satu.
+    Memperbaiki rotasi terbalik dan memaksa format Landscape 16:9.
+    """
+    rotation = get_video_rotation(input_path)
+    print(f"    [*] Menormalkan Video. Deteksi Rotasi: {rotation}°")
+
+    filters = []
+    # Jika terdeteksi miring/terbalik, perbaiki secara permanen
+    if rotation == 90:
+        filters.append("transpose=1")
+    elif rotation == 180:
+        filters.append("hflip,vflip")
+    elif rotation == 270:
+        filters.append("transpose=2")
     
+    # Paten 16:9 Landscape (1280x720)
+    filters.append("scale=w=1280:h=720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1")
+    
+    v_filter = ",".join(filters)
+    
+    cmd = [
+        'ffmpeg', '-y', '-i', input_path,
+        '-vf', v_filter,
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28',
+        '-an', # Hapus suara asli (Mute)
+        output_path
+    ]
+    # Jalankan proses normalisasi per file
+    return subprocess.run(cmd, capture_output=True).returncode == 0
+
+def main():
+    print(f"=== ROBOT LIVE: SISTEM LANDSCAPE 16:9 AUTO-FIX ===")
+    
+    if DELAY_MENIT > 0:
+        print(f"[⏳] Jeda natural: {DELAY_MENIT} menit...")
+        time.sleep(DELAY_MENIT * 60)
+
     drive = get_services()
     if not drive: return
 
     try:
-        # 1. Ambil Daftar File
+        # 1. Pindai Bahan
         v_res = drive.files().list(q=f"'{SOURCE_ID}' in parents and mimeType contains 'video' and trashed=false").execute()
         v_files = v_res.get('files', [])
         
@@ -66,58 +120,64 @@ def main():
         m_files = m_res.get('files', [])
 
         if not v_files or not m_files:
-            print("⛔ Bahan tidak ditemukan!")
+            print("⛔ Bahan di Drive tidak lengkap!")
             return
 
-        # 2. Acak Urutan
         random.shuffle(v_files)
         random.shuffle(m_files)
-        v_files = v_files[:5]  # Batasi download
+        v_files = v_files[:8] # Ambil maksimal 8 video
 
-        # 3. Proses Download
-        v_list = ""
+        # 2. Proses Normalisasi Individu (Menjamin posisi tegak)
+        v_list_content = ""
         for i, v in enumerate(v_files):
-            fname = f"vid_{i}.mp4"
-            if download_file(drive, v['id'], fname):
-                v_list += f"file '{fname}'\n"
+            raw_name = f"raw_{i}.mp4"
+            fixed_name = f"fixed_{i}.mp4"
+            print(f"[*] Mendownload & Memperbaiki Video {i+1}: {v['name']}")
+            
+            if download_file(drive, v['id'], raw_name):
+                # Tahap standarisasi ini yang memastikan video tidak terbalik
+                if standardize_video(raw_name, fixed_name):
+                    v_list_content += f"file '{fixed_name}'\n"
+                if os.path.exists(raw_name): os.remove(raw_name)
         
-        with open("v_list.txt", "w") as f: f.write(v_list)
+        with open("v_list.txt", "w") as f: f.write(v_list_content)
 
-        m_list = ""
-        for i, m in enumerate(m_files[:10]):
+        # 3. Siapkan Audio
+        m_list_content = ""
+        for i, m in enumerate(m_files[:15]): 
             mname = f"mus_{i}.mp3"
             if download_file(drive, m['id'], mname):
-                m_list += f"file '{mname}'\n"
-        
-        with open("m_list.txt", "w") as f: f.write(m_list)
+                m_list_content += f"file '{mname}'\n"
+        with open("m_list.txt", "w") as f: f.write(m_list_content)
 
-        # 4. Jalankan Live Streaming (Mute Video, Play Musik, Format 16:9)
+        # 4. Jalankan Live Streaming
         rtmp = f"rtmp://a.rtmp.youtube.com/live2/{STREAM_KEY}"
-        print(f"[🚀] LIVE DIMULAI")
+        print(f"\n[🚀] LIVE DIMULAI (Format Landscape 16:9 - Posisi Aman)")
 
         cmd = [
             'ffmpeg', '-y',
-            # Input Video (Loop)
+            # Menggunakan video yang sudah 'difix' posisinya
             '-f', 'concat', '-safe', '0', '-stream_loop', '-1', '-i', 'v_list.txt',
-            # Input Musik (Loop)
             '-f', 'concat', '-safe', '0', '-stream_loop', '-1', '-i', 'm_list.txt',
             '-t', str(LIVE_DURATION_SEC),
-            # Filter: Mute audio video, Scale ke 16:9 (1280x720)
-            '-vf', 'scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1',
             '-map', '0:v', '-map', '1:a',
             '-c:v', 'libx264', '-preset', 'ultrafast', '-b:v', '2500k',
             '-c:a', 'aac', '-ar', '44100', '-b:a', '128k',
             '-pix_fmt', 'yuv420p', '-f', 'flv', rtmp
         ]
 
-        subprocess.run(cmd)
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        for line in process.stdout:
+            if "frame=" in line:
+                print(f"Streaming: {line.strip()}", end="\r")
+        process.wait()
 
     except Exception as e:
-        print(f"⛔ ERROR: {e}")
+        print(f"\n⛔ ERROR: {e}")
     finally:
-        # Bersihkan file sementara
+        print("\n[*] Pembersihan file sementara...")
         for f in os.listdir():
-            if f.startswith("vid_") or f.startswith("mus_") or f in ["v_list.txt", "m_list.txt"]:
+            if f.startswith("fixed_") or f.startswith("mus_") or f in ["v_list.txt", "m_list.txt"]:
                 try: os.remove(f)
                 except: pass
 
