@@ -20,7 +20,7 @@ STREAM_KEY = os.environ.get('YOUTUBE_STREAM_KEY') # Kunci Live YouTube
 
 # Durasi live (45 - 60 menit)
 LIVE_DURATION_SEC = random.randint(2700, 3600) 
-# Jeda awal minimal
+# Jeda awal minimal agar server siap
 DELAY_MENIT = random.randint(0, 1)
 
 def get_services():
@@ -56,7 +56,7 @@ def download_file(service, file_id, output_name):
     except: return False
 
 def get_video_rotation(path):
-    """Membaca metadata rotasi asli video (0, 90, 180, 270)."""
+    """Membaca metadata rotasi asli video."""
     try:
         cmd = [
             'ffprobe', '-loglevel', 'error', '-select_streams', 'v:0',
@@ -71,37 +71,32 @@ def get_video_rotation(path):
 
 def standardize_video(input_path, output_path):
     """
-    PROSES KUNCI: Menormalkan setiap video satu per satu.
-    Memperbaiki rotasi terbalik dan memaksa format Landscape 16:9.
+    PROSES KUNCI: Menormalkan video (Baking).
+    Memperbaiki rotasi, format Landscape 16:9, dan Mute.
     """
     rotation = get_video_rotation(input_path)
-    print(f"    [*] Menormalkan Video. Deteksi Rotasi: {rotation}°")
+    print(f"    [*] Menormalkan Video (Rotasi: {rotation}°)")
 
     filters = []
-    # Jika terdeteksi miring/terbalik, perbaiki secara permanen
-    if rotation == 90:
-        filters.append("transpose=1")
-    elif rotation == 180:
-        filters.append("hflip,vflip")
-    elif rotation == 270:
-        filters.append("transpose=2")
+    if rotation == 90: filters.append("transpose=1")
+    elif rotation == 180: filters.append("hflip,vflip")
+    elif rotation == 270: filters.append("transpose=2")
     
     # Paten 16:9 Landscape (1280x720)
     filters.append("scale=w=1280:h=720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1")
-    
     v_filter = ",".join(filters)
     
     cmd = [
         'ffmpeg', '-y', '-i', input_path,
         '-vf', v_filter,
         '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28',
-        '-an', # Hapus suara asli (Mute)
+        '-an', # Mute suara asli
         output_path
     ]
     return subprocess.run(cmd, capture_output=True).returncode == 0
 
 def main():
-    print(f"=== ROBOT LIVE: SISTEM LANDSCAPE 16:9 AUTO-FIX ===")
+    print(f"=== ROBOT LIVE: SISTEM LOOPING REAL-TIME 16:9 ===")
     
     if DELAY_MENIT > 0:
         print(f"[⏳] Jeda natural: {DELAY_MENIT} menit...")
@@ -124,9 +119,9 @@ def main():
 
         random.shuffle(v_files)
         random.shuffle(m_files)
-        v_files = v_files[:8] # Ambil maksimal 8 video
+        v_files = v_files[:8] 
 
-        # 2. Proses Normalisasi Individu
+        # 2. Proses Normalisasi (Baking)
         v_list_content = ""
         for i, v in enumerate(v_files):
             raw_name = f"raw_{i}.mp4"
@@ -148,15 +143,19 @@ def main():
                 m_list_content += f"file '{mname}'\n"
         with open("m_list.txt", "w") as f: f.write(m_list_content)
 
-        # 4. Jalankan Live Streaming
+        # 4. Jalankan Live Streaming dengan LOGIKA LOOPING BARU
         rtmp = f"rtmp://a.rtmp.youtube.com/live2/{STREAM_KEY}"
-        print(f"\n[🚀] LIVE DIMULAI (Format Landscape 16:9)")
+        print(f"\n[🚀] LIVE DIMULAI (Target Durasi: {LIVE_DURATION_SEC/60:.1f} Menit)")
 
+        # PERBAIKAN:
+        # - Menambahkan '-re' agar FFmpeg membaca file sesuai durasi asli (Real-time).
+        # - '-stream_loop -1' akan mengulang daftar video/musik jika durasi total file lebih pendek dari target.
         cmd = [
             'ffmpeg', '-y',
+            '-re', # PENTING: Baca file dalam mode Real-Time agar looping sinkron
             '-f', 'concat', '-safe', '0', '-stream_loop', '-1', '-i', 'v_list.txt',
             '-f', 'concat', '-safe', '0', '-stream_loop', '-1', '-i', 'm_list.txt',
-            '-t', str(LIVE_DURATION_SEC),
+            '-t', str(LIVE_DURATION_SEC), # Batas waktu siaran
             '-map', '0:v', '-map', '1:a',
             '-c:v', 'libx264', '-preset', 'ultrafast', '-b:v', '2500k',
             '-c:a', 'aac', '-ar', '44100', '-b:a', '128k',
@@ -175,10 +174,8 @@ def main():
         print("\n[*] Pembersihan file sementara...")
         for f in os.listdir():
             if f.startswith("fixed_") or f.startswith("mus_") or f in ["v_list.txt", "m_list.txt"]:
-                try:
-                    os.remove(f)
-                except:
-                    pass
+                try: os.remove(f)
+                except: pass
 
 if __name__ == "__main__":
     main()
