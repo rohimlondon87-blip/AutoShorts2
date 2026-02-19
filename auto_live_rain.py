@@ -56,50 +56,92 @@ def download_file(service, file_id, output_name):
     except: return False
 
 def get_video_rotation(path):
-    """Membaca metadata rotasi asli video (0, 90, 180, 270)."""
+    """
+    Membaca rotasi dari tags DAN displaymatrix (lebih akurat).
+    """
     try:
         cmd = [
-            'ffprobe', '-loglevel', 'error', '-select_streams', 'v:0',
-            '-show_entries', 'stream_tags=rotate', '-of', 'json', path
+            'ffprobe',
+            '-v', 'error',
+            '-select_streams', 'v:0',
+            '-show_entries',
+            'stream_tags=rotate:stream_side_data=rotation',
+            '-of', 'json',
+            path
         ]
+
         result = subprocess.check_output(cmd).decode('utf-8')
         data = json.loads(result)
-        tags = data.get('streams', [{}])[0].get('tags', {})
-        return int(tags.get('rotate', 0))
-    except:
+
+        stream = data.get("streams", [{}])[0]
+
+        # cek dari tags
+        tags = stream.get("tags", {})
+        if "rotate" in tags:
+            return int(tags["rotate"])
+
+        # cek dari side_data (displaymatrix)
+        side_data = stream.get("side_data_list", [])
+        for item in side_data:
+            if "rotation" in item:
+                return int(item["rotation"])
+
         return 0
 
+    except Exception as e:
+        print(f"Rotation detect error: {e}")
+        return 0
+
+
 def standardize_video(input_path, output_path):
-    """
-    PROSES KUNCI: Menormalkan setiap video satu per satu.
-    Memperbaiki rotasi terbalik dan memaksa format Landscape 16:9.
-    """
+
     rotation = get_video_rotation(input_path)
-    print(f"    [*] Menormalkan Video. Deteksi Rotasi: {rotation}°")
+    print(f"    [*] Deteksi rotasi: {rotation}°")
 
     filters = []
-    # Jika terdeteksi miring/terbalik, perbaiki secara permanen
+
+    # FIX semua kemungkinan rotasi
     if rotation == 90:
-        filters.append("transpose=1")
-    elif rotation == 180:
-        filters.append("hflip,vflip")
-    elif rotation == 270:
-        filters.append("transpose=2")
-    
-    # Paten 16:9 Landscape (1280x720)
-    filters.append("scale=w=1280:h=720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1")
-    
-    v_filter = ",".join(filters)
-    
+        filters.append("transpose=1")  # clockwise
+
+    elif rotation == -90 or rotation == 270:
+        filters.append("transpose=2")  # counter clockwise
+
+    elif rotation == 180 or rotation == -180:
+        filters.append("vflip,hflip")  # balik atas bawah + kiri kanan
+
+    # paksa landscape 16:9
+    filters.append(
+        "scale=1280:720:force_original_aspect_ratio=increase,"
+        "crop=1280:720,"
+        "setsar=1"
+    )
+
+    vf = ",".join(filters)
+
     cmd = [
-        'ffmpeg', '-y', '-i', input_path,
-        '-vf', v_filter,
-        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28',
-        '-an', # Hapus suara asli (Mute)
+        'ffmpeg',
+        '-y',
+        '-i', input_path,
+
+        '-vf', vf,
+
+        # RESET metadata rotasi agar tidak terbalik lagi
+        '-metadata:s:v:0', 'rotate=0',
+
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-crf', '23',
+
+        '-an',
+
         output_path
     ]
-    # Jalankan proses normalisasi per file
-    return subprocess.run(cmd, capture_output=True).returncode == 0
+
+    result = subprocess.run(cmd)
+
+    return result.returncode == 0
+
 
 def main():
     print(f"=== ROBOT LIVE: SISTEM LANDSCAPE 16:9 AUTO-FIX ===")
