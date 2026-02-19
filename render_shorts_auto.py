@@ -19,7 +19,7 @@ MUSIC_ID = os.environ.get('MUSIC_FOLDER_ID')
 UPLOTAN_ID = os.environ.get('UPLOTAN_FOLDER_ID') 
 QUOTES_ID = os.environ.get('QUOTES_FILE_ID') 
 
-MAX_DURATION = 15 
+MAX_DURATION = 30 
 BATCH_LIMIT = 5 
 
 # Cadangan jika Drive Gagal Total
