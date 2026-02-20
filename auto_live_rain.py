@@ -13,7 +13,7 @@ from googleapiclient.http import MediaIoBaseDownload
 from google.auth.transport.requests import Request
 
 # --- KONFIGURASI TUNGGAL (TOKEN A) ---
-TOKEN_B64 = os.environ.get('TOKEN_DATA')
+TOKEN_B64 = os.environ.get('TOKEN_DATA_B')
 SOURCE_ID = os.environ.get('SOURCE_LIVE_ID')      # Folder Video Latar
 MUSIC_ID = os.environ.get('MUSIC_FOLDER_ID')    # Folder Musik MP3
 STREAM_KEY = os.environ.get('YOUTUBE_STREAM_KEY') # Kunci Live YouTube
