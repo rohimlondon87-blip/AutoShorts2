@@ -1,31 +1,14 @@
-name: Auto Live Stream (Token B)
-
-on:
-  schedule:
-    # Jam 15:00 WITA (07:00 UTC)
-    - cron: '0 7 * * *' 
-  workflow_dispatch:
-
-jobs:
-  live:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install FFmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - run: pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
-      
-      - name: Jalankan Live (Via Proyek B)
+      - name: Run Robot Live
         env:
-          # --- PERUBAHAN UTAMA: MENGGUNAKAN KUNCI B ---
           TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
           CLIENT_SECRETS_DATA: ${{ secrets.CLIENT_SECRETS_DATA }}
-          
-          # Konfigurasi Lainnya
           SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
           MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
           YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
         run: python auto_live_rain.py
+
+**Penjelasan:**
+* Jika baris `TOKEN_DATA: ${{ secrets.TOKEN_DATA }}` tidak ada di file `.yml`, maka script Python **tidak akan pernah bisa** membaca token tersebut, meskipun Secret-nya sudah Anda buat di GitHub.
+* Script terbaru di atas juga sudah saya bekali dengan "pencari otomatis", jadi jika Anda menamainya `TOKEN_DATA_B` tapi script mencari `TOKEN_DATA`, dia akan mencoba menemukannya sendiri.
+
+Silakan perbarui file `auto_live_rain.py` dan pastikan file `.yml` Anda sudah mengirimkan Secret ke environment Python. Beritahu saya hasilnya!
