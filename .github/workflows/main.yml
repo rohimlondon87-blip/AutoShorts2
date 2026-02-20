@@ -2,7 +2,7 @@ name: Auto Upload Shorts (Dual Token)
 
 on:
   schedule:
-    - cron: '0 22,0,2,4,6,8,10,12,14,16 * * *'
+    - cron: '0 22,0,2,4,6,8,10,12,14,16,18,21 * * *'
   workflow_dispatch:
 
 jobs:
