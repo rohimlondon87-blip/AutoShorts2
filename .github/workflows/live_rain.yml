@@ -21,8 +21,8 @@ jobs:
       - name: Jalankan Live (Via Proyek B)
         env:
           # --- PERUBAHAN UTAMA: MENGGUNAKAN KUNCI B ---
-          TOKEN_DATA: ${{ secrets.TOKEN_DATA_B }}
-          CLIENT_SECRETS_DATA: ${{ secrets.CLIENT_SECRETS_DATA_B }}
+          TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
+          CLIENT_SECRETS_DATA: ${{ secrets.CLIENT_SECRETS_DATA }}
           
           # Konfigurasi Lainnya
           SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
