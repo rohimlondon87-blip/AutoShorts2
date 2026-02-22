@@ -1,184 +1,191 @@
 import os
 import base64
 import pickle
+import random
 import io
+import sys
+import subprocess
+import textwrap
 import time
-import re
-from datetime import datetime, timedelta
+import json
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
+from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 from google.auth.transport.requests import Request
-from googleapiclient.errors import HttpError
 
-# --- KONFIGURASI DUAL TOKEN ---
-CREDENTIAL_SETS = [
-    {
-        'label': 'KUNCI UTAMA (A)',
-        'token': os.environ.get('TOKEN_DATA'),
-        'secret': os.environ.get('CLIENT_SECRETS_DATA')
-    },
-    {
-        'label': 'KUNCI CADANGAN (B)',
-        'token': os.environ.get('TOKEN_DATA_B'),
-        'secret': os.environ.get('CLIENT_SECRETS_DATA_B')
-    }
+# --- KONFIGURASI BRANDING: MICRO WILD ---
+# Hanya menggunakan satu Token (A)
+TOKEN_DATA = os.environ.get('TOKEN_DATA')
+SOURCE_ID = os.environ.get('SOURCE_LIVE_ID')      
+MUSIC_ID = os.environ.get('MUSIC_FOLDER_ID')   
+UPLOTAN_ID = os.environ.get('UPLOTAN_FOLDER_ID') 
+QUOTES_ID = os.environ.get('QUOTES_FILE_ID') 
+
+MAX_DURATION = 30 
+BATCH_LIMIT = 5 
+
+# Cadangan jika Drive Gagal Total
+INTERNAL_BACKUP = [
+    "Perjuangan hari ini adalah kekuatan esok.",
+    "Konsistensi adalah kunci keberhasilan.",
+    "Jangan berhenti saat lelah, berhentilah saat selesai.",
+    "MICRO WILD: Menjelajah tanpa batas."
 ]
 
-def clean_id(folder_id):
-    if not folder_id: return ""
-    return re.sub(r'[^a-zA-Z0-9_-]', '', folder_id).strip()
-
-UPLOTAN_ID = clean_id(os.environ.get('UPLOTAN_FOLDER_ID', ''))
-SELESAI_ID = clean_id(os.environ.get('PROCESSED_FOLDER_ID', ''))
-
-def get_services(token_b64, secret_b64, label):
-    """Login dengan pembersihan karakter spasi hantu."""
+def get_drive_service():
+    """Autentikasi murni menggunakan TOKEN_DATA (Token A)."""
     try:
-        if not token_b64 or not secret_b64:
-            return None, None
+        if not TOKEN_DATA:
+            print("⛔ ERROR: TOKEN_DATA (Token A) tidak ditemukan di Secrets!")
+            return None
         
-        # Bersihkan karakter \xa0 atau spasi yang tidak terlihat
-        t_str = token_b64.replace('\xa0', '').strip().replace(" ", "").replace("\n", "")
-        s_str = secret_b64.replace('\xa0', '').strip().replace(" ", "").replace("\n", "")
+        t_str = TOKEN_DATA.strip().replace('\xa0', '').replace(" ", "")
+        pad = len(t_str) % 4
+        if pad: t_str += '=' * (4 - pad)
         
-        missing_padding = len(t_str) % 4
-        if missing_padding:
-            t_str += '=' * (4 - missing_padding)
-
         creds = pickle.loads(base64.b64decode(t_str))
         if creds.expired and creds.refresh_token:
+            print("[*] Menyegarkan akses token...")
             creds.refresh(Request())
-            
-        return build('drive', 'v3', credentials=creds), build('youtube', 'v3', credentials=creds)
+        return build('drive', 'v3', credentials=creds)
     except Exception as e:
-        print(f"⚠️ {label} Login Error: {e}")
-        return None, None
+        print(f"⛔ Auth Error: {e}")
+        return None
 
-def upload_to_youtube(youtube, file_path, metadata_text, label):
+def find_font():
+    """Mencari font sistem untuk Linux (GitHub Actions)."""
+    paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf"
+    ]
+    for p in paths:
+        if os.path.exists(p): return p
+    return None
+
+def get_video_rotation(path):
+    """Mendeteksi rotasi video (Paten Anti-Terbalik)."""
     try:
-        ch = youtube.channels().list(part='snippet', mine=True).execute()
-        ch_name = ch['items'][0]['snippet']['title']
-    except: ch_name = "Unknown"
+        cmd = [
+            'ffprobe', '-loglevel', 'error', '-select_streams', 'v:0',
+            '-show_entries', 'stream_tags=rotate', '-of', 'json', path
+        ]
+        result = subprocess.check_output(cmd).decode('utf-8')
+        data = json.loads(result)
+        tags = data.get('streams', [{}])[0].get('tags', {})
+        return int(tags.get('rotate', 0))
+    except: return 0
 
-    print(f"[*] Target Upload: {ch_name} (Via {label})")
-    
-    # Penjadwalan 45 Menit
-    publish_time = (datetime.utcnow() + timedelta(minutes=45)).strftime('%Y-%m-%dT%H:%M:%SZ')
-    
-    body = {
-        'snippet': {
-            'title': metadata_text[:100],
-            'description': f"{metadata_text}\n\n#shorts #viral #mucrowild",
-            'categoryId': '22'
-        },
-        'status': {
-            'privacyStatus': 'private', 
-            'publishAt': publish_time,
-            'selfDeclaredMadeForKids': False
-        }
-    }
-    
-    media = MediaFileUpload(file_path, mimetype='video/mp4', resumable=True)
-    request = youtube.videos().insert(part='snippet,status', body=body, media_body=media)
-    
+def get_quotes_robust(service):
+    """Mengambil quotes dari Drive secara acak."""
+    if not QUOTES_ID: return INTERNAL_BACKUP
+    print(f"[*] Mengambil Quotes dari Drive...")
     try:
-        response = None
-        while response is None:
-            status, response = request.next_chunk()
-            if status:
-                print(f"    -> Progress: {int(status.progress() * 100)}%", end='\r')
-        print("") 
-        return response.get('id'), publish_time
-    except HttpError as e:
-        if e.resp.status == 403: return None, "QUOTA_FULL"
-        return None, str(e)
+        file_meta = service.files().get(fileId=QUOTES_ID).execute()
+        mime_type = file_meta.get('mimeType', '')
+        fh = io.BytesIO()
+        if 'application/vnd.google-apps' in mime_type:
+            request = service.files().export_media(fileId=QUOTES_ID, mimeType='text/plain')
+        else:
+            request = service.files().get_media(fileId=QUOTES_ID)
 
-def main():
-    print("=== ROBOT UPLOAD SHORTS (SISTEM ANTREAN FIFO) ===")
-    
-    # 1. Login Drive
-    drive_service = None
-    for cred in CREDENTIAL_SETS:
-        drive_service, _ = get_services(cred['token'], cred['secret'], cred['label'])
-        if drive_service: break
-
-    if not drive_service:
-        print("⛔ SEMUA TOKEN GAGAL LOGIN.")
-        return
-
-    # 2. Cari Video (Urutan Terlama)
-    # Gunakan createdTime (Waktu file masuk ke Drive)
-    query = f"'{UPLOTAN_ID}' in parents and mimeType='video/mp4' and not name contains '[UPLOADED]' and trashed=false"
-    try:
-        # Kita ambil lebih dari 1 dulu untuk menghitung total antrean di log
-        res = drive_service.files().list(
-            q=query, 
-            orderBy="createdTime", # Tanpa 'desc' agar yang terlama (paling atas) diambil
-            fields="files(id, name, description, createdTime, parents)"
-        ).execute()
-        all_files = res.get('files', [])
-    except Exception as e:
-        print(f"⛔ Gagal baca Drive: {e}")
-        return
-
-    if not all_files:
-        print("[-] Tidak ada antrean video baru. Menunggu proses render...")
-        return
-
-    # Ambil file pertama (paling lama sesuai orderBy)
-    video_file = all_files[0]
-    total_antrean = len(all_files)
-    
-    file_id = video_file['id']
-    file_name = video_file['name']
-    file_time = video_file['createdTime']
-    curr_parents = ",".join(video_file.get('parents', []))
-    meta_text = video_file.get('description', file_name.replace('.mp4', ''))
-
-    print(f"[*] Total Antrean: {total_antrean} video")
-    print(f"[*] Memilih File TERLAMA (Front of Queue):")
-    print(f"    🎬 Nama  : {file_name}")
-    print(f"    📅 Dibuat: {file_time}")
-
-    # 3. Download
-    temp_v = "upload_now.mp4"
-    print(f"[*] Mendownload file dari Drive...")
-    request = drive_service.files().get_media(fileId=file_id)
-    with io.FileIO(temp_v, 'wb') as fh:
         downloader = MediaIoBaseDownload(fh, request)
         done = False
         while not done: _, done = downloader.next_chunk()
+        
+        content = fh.getvalue().decode('utf-8-sig')
+        lines = [l.strip() for l in content.splitlines() if len(l.strip()) > 5]
+        return lines if lines else INTERNAL_BACKUP
+    except: return INTERNAL_BACKUP
 
-    # 4. Upload (Failover A -> B)
-    success = False
-    for cred in CREDENTIAL_SETS:
-        _, youtube = get_services(cred['token'], cred['secret'], cred['label'])
-        if not youtube: continue
+def render_shorts(v_in, a_in, v_out, text, v_start, a_start, font_p):
+    """Rendering Shorts dengan Paten Portrait 9:16 & Fix Rotation."""
+    wrapped = "\n".join(textwrap.wrap(text, width=20))
+    safe_txt = wrapped.replace("'", "").replace(":", "\\:")
+    
+    rotation = get_video_rotation(v_in)
+    rot_filter = ""
+    if rotation == 90: rot_filter = "transpose=1,"
+    elif rotation == 180: rot_filter = "hflip,vflip,"
+    elif rotation == 270: rot_filter = "transpose=2,"
 
-        video_id, result = upload_to_youtube(youtube, temp_v, meta_text, cred['label'])
-        if video_id:
-            print(f"[✅] BERHASIL! Video ID: {video_id}")
-            print(f"[⏰] Jadwal Publikasi Otomatis: {result} (UTC)")
-            success = True
-            break
-        elif result == "QUOTA_FULL":
-            print(f"⚠️ {cred['label']} Habis Kuota. Mencoba Cadangan...")
-        else:
-            print(f"❌ {cred['label']} Error: {result}")
+    # Filter: Rotasi -> Portrait 9:16 -> DrawText Tengah
+    v_filter = (
+        f"{rot_filter}scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
+        f"drawtext=text='{safe_txt}':fontcolor=white:fontsize=75:fontfile={font_p}:"
+        f"x=(w-text_w)/2:y=(h-text_h)/2:box=1:boxcolor=black@0.6:boxborderw=40:line_spacing=20"
+    )
 
-    # 5. Pasca Upload
-    if success:
-        print("[*] Membersihkan antrean...")
+    cmd = [
+        'ffmpeg', '-y',
+        '-ss', str(round(v_start, 2)), '-t', str(MAX_DURATION), '-i', v_in,
+        '-ss', str(round(a_start, 2)), '-t', str(MAX_DURATION), '-i', a_in,
+        '-filter_complex', f'[0:v]{v_filter}[vout]; [0:a]volume=0.3[a1]; [1:a]volume=1.2[a2]; [a1][a2]amix=inputs=2:duration=first[aout]',
+        '-map', '[vout]', '-map', '[aout]',
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', '-t', str(MAX_DURATION), v_out 
+    ]
+    return subprocess.run(cmd, capture_output=True).returncode == 0
+
+def main():
+    print("=== ROBOT SHORTS: MICRO WILD (FIXED PORTRAIT) ===")
+    service = get_drive_service()
+    font_path = find_font()
+    if not service or not font_path: return
+
+    try:
+        quotes_pool = get_quotes_robust(service) 
+        v_res = service.files().list(q=f"'{SOURCE_ID}' in parents and mimeType contains 'video'").execute()
+        m_res = service.files().list(q=f"'{MUSIC_ID}' in parents and mimeType contains 'audio'").execute()
+        
+        v_files = v_res.get('files', [])
+        m_files = m_res.get('files', [])
+        
+        if not v_files or not m_files:
+            print("⛔ Bahan Video/Musik tidak ditemukan.")
+            return
+            
+        random.shuffle(v_files)
+        random.shuffle(m_files)
+    except Exception as e:
+        print(f"⛔ Drive Error: {e}")
+        return
+
+    limit = min(BATCH_LIMIT, len(v_files))
+    for i in range(limit):
+        f_vid = v_files[i]
+        f_mus = m_files[i % len(m_files)]
+        txt = random.choice(quotes_pool)
+        
+        print(f"\n[🚀] Memulai Render {i+1}/{limit}")
+        print(f"    🎬 Video : {f_vid['name']}")
+        print(f"    📝 Quotes: {txt[:30]}...")
+
+        t_v, t_a = f"v{i}.mp4", f"a{i}.mp3"
+        out_name = f"Shorts_{int(time.time())}_{i}.mp4"
+
         try:
-            if SELESAI_ID:
-                drive_service.files().update(fileId=file_id, addParents=SELESAI_ID, removeParents=curr_parents).execute()
-                print("[✨] Berhasil dipindahkan ke folder Selesai.")
-            else: raise Exception
-        except:
-            drive_service.files().update(fileId=file_id, body={'name': f"[UPLOADED]_{file_name}"}).execute()
-            print("[🏷️] Berhasil ditandai sebagai [UPLOADED].")
+            # Download bahan
+            with open(t_v, "wb") as f: f.write(service.files().get_media(fileId=f_vid['id']).execute())
+            with open(t_a, "wb") as f: f.write(service.files().get_media(fileId=f_mus['id']).execute())
+            
+            # Ambil potongan acak
+            dv = float(subprocess.check_output(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', t_v]).decode().strip())
+            vs = random.uniform(0, max(0, dv - MAX_DURATION - 2))
+            
+            if render_shorts(t_v, t_a, out_name, txt, vs, 0, font_path):
+                meta = {'name': out_name, 'parents': [UPLOTAN_ID]}
+                media = MediaFileUpload(out_name, mimetype='video/mp4')
+                service.files().create(body=meta, media_body=media).execute()
+                print(f"    ✅ BERHASIL UPLOAD KE DRIVE")
+            else:
+                print("    ❌ Gagal Rendering")
 
-    if os.path.exists(temp_v): os.remove(temp_v)
+        except Exception as e:
+            print(f"    ❌ Error: {e}")
+        finally:
+            for f in [t_v, t_a, out_name]:
+                if os.path.exists(f): os.remove(f)
+
+    print("\n[✨] Semua tugas MICRO WILD Selesai.")
 
 if __name__ == "__main__":
     main()
