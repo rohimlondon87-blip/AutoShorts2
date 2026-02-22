@@ -22,13 +22,9 @@ jobs:
 
       - name: Jalankan Robot Dual Token
         env:
-          # Kunci A
-          CLIENT_SECRETS_DATA: ${{ secrets.CLIENT_SECRETS_DATA }}
-          TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
-          # Kunci B
-          CLIENT_SECRETS_DATA_B: ${{ secrets.CLIENT_SECRETS_DATA_B }}
-          TOKEN_DATA_B: ${{ secrets.TOKEN_DATA_B }}
-          # ID Folder (Harus Sama dengan Nama di Secrets GitHub)
-          UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
-          PROCESSED_FOLDER_ID: ${{ secrets.PROCESSED_FOLDER_ID }}
-        run: python auto_shorts.py
+  SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
+  MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
+  UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
+  TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
+3.  **Bukan Link Folder:** Ingat, yang dimasukkan ke Secret adalah **ID-nya saja** (kumpulan kode acak di akhir link Google Drive), bukan seluruh link `https://drive.google.com/...`.
+
