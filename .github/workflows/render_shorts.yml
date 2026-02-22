@@ -1,34 +1,35 @@
-name: MICRO WILD - Live Stream System
+name: MICRO WILD - Auto Render Shorts
 
 on:
-  workflow_dispatch: # Tombol jalankan manual
+  workflow_dispatch: # Agar muncul tombol "Run workflow" manual
   schedule:
-    - cron: '0 */4 * * *' # Otomatis jalan setiap 4 jam
+    - cron: '0 */6 * * *' # Berjalan otomatis setiap 6 jam
 
 jobs:
-  streaming:
+  render:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Kode
+      - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Set up Python
+      - name: Install Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
 
-      - name: Install Dependencies
+      - name: Install FFmpeg & Fonts
         run: |
-          pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg fonts-dejavu-core
+          pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
 
-      - name: Eksekusi Robot Live
+      - name: Jalankan Skrip Render
         env:
-          # Pastikan nama di bawah ini sama persis dengan yang ada di Settings > Secrets
+          # Pastikan semua Secret ini sudah Anda isi di Settings
           TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
-          CLIENT_SECRETS_DATA: ${{ secrets.CLIENT_SECRETS_DATA }}
           SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
           MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
-          YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
-        run: python auto_live_rain.py
+          UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
+          QUOTES_FILE_ID: ${{ secrets.QUOTES_FILE_ID }}
+        # Nama file di bawah ini harus sama dengan file .py Anda
+        run: python render_shorts_auto.py
