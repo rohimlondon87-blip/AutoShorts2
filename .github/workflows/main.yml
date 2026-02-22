@@ -1,15 +1,20 @@
-name: Auto Upload Shorts (Dual Token)
+name: MICRO WILD - Automated System
 
 on:
-  schedule:
-    - cron: '0 22,0,2,4,6,8,10,12,14,16,18,21 * * *'
   workflow_dispatch:
+  schedule:
+    # Render setiap jam 2 pagi WITA (18:00 UTC)
+    - cron: '0 18 * * *'
+    # Upload setiap 2 jam (Mulai jam 6 pagi WITA)
+    - cron: '0 22,0,2,4,6,8,10,12,14,16 * * *'
+    # Live jam 3 sore WITA (07:00 UTC)
+    - cron: '0 7 * * *'
 
 jobs:
-  upload_process:
+  system_task:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Python
@@ -17,14 +22,34 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Dependencies
-        run: pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
+      - name: Install Tools
+        run: |
+          sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
+          pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
 
-      - name: Jalankan Robot Dual Token
+      - name: Jalankan Robot (Otomatis Deteksi Tugas)
         env:
-  SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
-  MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
-  UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
-  TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
-3.  **Bukan Link Folder:** Ingat, yang dimasukkan ke Secret adalah **ID-nya saja** (kumpulan kode acak di akhir link Google Drive), bukan seluruh link `https://drive.google.com/...`.
-
+          TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
+          TOKEN_DATA_B: ${{ secrets.TOKEN_DATA_B }}
+          CLIENT_SECRETS_DATA: ${{ secrets.CLIENT_SECRETS_DATA }}
+          CLIENT_SECRETS_DATA_B: ${{ secrets.CLIENT_SECRETS_DATA_B }}
+          SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
+          MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
+          UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
+          PROCESSED_FOLDER_ID: ${{ secrets.PROCESSED_FOLDER_ID }}
+          QUOTES_FILE_ID: ${{ secrets.QUOTES_FILE_ID }}
+          YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
+        run: |
+          # Logika sederhana: Jalankan semua berdasarkan jadwal
+          if [[ "${{ github.event.schedule }}" == "0 18 * * *" ]]; then
+            python render_shorts.py
+          elif [[ "${{ github.event.schedule }}" == "0 7 * * *" ]]; then
+            python live_stream.py
+          else
+            python upload_shorts.py
+          fi
+          
+          # Jika dijalankan manual (workflow_dispatch), jalankan upload sebagai default
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            python upload_shorts.py
+          fi
