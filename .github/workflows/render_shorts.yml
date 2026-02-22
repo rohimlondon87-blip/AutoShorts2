@@ -1,40 +1,34 @@
-name: Auto Render Shorts
+name: MICRO WILD - Live Stream System
 
 on:
+  workflow_dispatch: # Tombol jalankan manual
   schedule:
-    # Berjalan setiap 6 jam sekali agar stok video di Uplotan selalu ada
-    - cron: '0 */6 * * *'
-  workflow_dispatch:
+    - cron: '0 */4 * * *' # Otomatis jalan setiap 4 jam
 
 jobs:
-  render:
+  streaming:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - name: Checkout Kode
+        uses: actions/checkout@v3
 
-      - name: Install FFmpeg
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
         run: |
+          pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Dependencies
-        run: pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
-
-      - name: Jalankan Robot Render (Via Proyek B)
+      - name: Eksekusi Robot Live
         env:
-          # --- PERBAIKAN DI SINI: NAMA HARUS TOKEN_DATA_B ---
-          TOKEN_DATA_B: ${{ secrets.TOKEN_DATA_B }}
-          CLIENT_SECRETS_DATA_B: ${{ secrets.CLIENT_SECRETS_DATA_B }}
-          
-          # ID Folder
+          # Pastikan nama di bawah ini sama persis dengan yang ada di Settings > Secrets
+          TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
+          CLIENT_SECRETS_DATA: ${{ secrets.CLIENT_SECRETS_DATA }}
           SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
           MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
-          UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
-          QUOTES_FILE_ID: ${{ secrets.QUOTES_FILE_ID }}
-        run: python render_shorts_auto.py
+          YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
+        run: python auto_live_rain.py
