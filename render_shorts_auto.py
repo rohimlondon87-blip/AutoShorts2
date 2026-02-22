@@ -13,7 +13,7 @@ from google.auth.transport.requests import Request
 from googleapiclient.errors import HttpError
 
 # --- KONFIGURASI ---
-TOKEN_DATA = os.environ.get('TOKEN_DATA_B') or os.environ.get('TOKEN_DATA')
+TOKEN_DATA = os.environ.get('TOKEN_DATA') or os.environ.get('TOKEN_DATA')
 SOURCE_ID = os.environ.get('SOURCE_LIVE_ID')      
 MUSIC_ID = os.environ.get('MUSIC_FOLDER_ID')   
 UPLOTAN_ID = os.environ.get('UPLOTAN_FOLDER_ID') 
