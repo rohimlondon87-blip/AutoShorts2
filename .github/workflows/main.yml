@@ -1,38 +1,38 @@
 name: MICRO WILD - Automated System
 
 on:
-  workflow_dispatch:
   schedule:
-    # Render setiap jam 2 pagi WITA (18:00 UTC)
-    - cron: '0 18 * * *'
-    # Upload setiap 2 jam (Mulai jam 6 pagi WITA)
-    - cron: '0 22,0,2,4,6,8,10,12,14,16 * * *'
-    # Live jam 3 sore WITA (07:00 UTC)
-    - cron: '0 7 * * *'
+    - cron: '0 18 * * *' # Render jam 2 pagi WITA
+    - cron: '0 */4 * * *' # Upload setiap 4 jam
+    - cron: '0 7 * * *'   # Live jam 3 sore WITA
+  workflow_dispatch:
+    inputs:
+      pilih_tugas:
+        description: 'Pilih tugas yang ingin dijalankan sekarang:'
+        required: true
+        default: 'upload'
+        type: choice
+        options:
+          - upload
+          - render
+          - live
 
 jobs:
-  system_task:
+  task:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - name: Install Tools
         run: |
           sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
           pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
-
-      - name: Jalankan Robot (Otomatis Deteksi Tugas)
+      - name: Execute Robot
         env:
           TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
-          TOKEN_DATA_B: ${{ secrets.TOKEN_DATA_B }}
-          CLIENT_SECRETS_DATA: ${{ secrets.CLIENT_SECRETS_DATA }}
-          CLIENT_SECRETS_DATA_B: ${{ secrets.CLIENT_SECRETS_DATA_B }}
           SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
           MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
           UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
@@ -40,16 +40,24 @@ jobs:
           QUOTES_FILE_ID: ${{ secrets.QUOTES_FILE_ID }}
           YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
         run: |
-          # Logika sederhana: Jalankan semua berdasarkan jadwal
-          if [[ "${{ github.event.schedule }}" == "0 18 * * *" ]]; then
-            python render_shorts.py
-          elif [[ "${{ github.event.schedule }}" == "0 7 * * *" ]]; then
-            python live_stream.py
-          else
-            python upload_shorts.py
-          fi
-          
-          # Jika dijalankan manual (workflow_dispatch), jalankan upload sebagai default
+          # JIKA DIJALANKAN SECARA MANUAL (KLIK TOMBOL)
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            python upload_shorts.py
+            echo "Menjalankan tugas manual: ${{ github.event.inputs.pilih_tugas }}"
+            if [[ "${{ github.event.inputs.pilih_tugas }}" == "render" ]]; then
+              python render_shorts.py
+            elif [[ "${{ github.event.inputs.pilih_tugas }}" == "live" ]]; then
+              python live_stream.py
+            else
+              python upload_shorts.py
+            fi
+            
+          # JIKA DIJALANKAN OTOMATIS OLEH JADWAL (CRON)
+          else
+            if [[ "${{ github.event.schedule }}" == "0 18 * * *" ]]; then
+              python render_shorts.py
+            elif [[ "${{ github.event.schedule }}" == "0 7 * * *" ]]; then
+              python live_stream.py
+            else
+              python upload_shorts.py
+            fi
           fi
