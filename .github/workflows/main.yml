@@ -33,6 +33,9 @@ jobs:
       - name: Execute Robot
         env:
           TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
+          TOKEN_DATA_B: ${{ secrets.TOKEN_DATA_B }}
+          CLIENT_SECRETS_DATA: ${{ secrets.CLIENT_SECRETS_DATA }}
+          CLIENT_SECRETS_DATA_B: ${{ secrets.CLIENT_SECRETS_DATA_B }}
           SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
           MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
           UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
@@ -46,7 +49,7 @@ jobs:
             if [[ "${{ github.event.inputs.pilih_tugas }}" == "render" ]]; then
               python render_shorts.py
             elif [[ "${{ github.event.inputs.pilih_tugas }}" == "live" ]]; then
-              python live_stream.py
+              python auto_live_rain.py
             else
               python upload_shorts.py
             fi
@@ -56,7 +59,7 @@ jobs:
             if [[ "${{ github.event.schedule }}" == "0 18 * * *" ]]; then
               python render_shorts.py
             elif [[ "${{ github.event.schedule }}" == "0 7 * * *" ]]; then
-              python live_stream.py
+              python auto_live_rain.py
             else
               python upload_shorts.py
             fi
