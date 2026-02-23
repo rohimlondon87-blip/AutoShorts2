@@ -3,7 +3,7 @@ name: MICRO WILD - Automated System
 on:
   schedule:
     - cron: '0 18 * * *' # Render jam 2 pagi WITA
-    - cron: '0 */4 * * *' # Upload setiap 4 jam
+    - cron: '0 22,0,2,4,6,8,10,12,14,16 * * *' # Upload setiap 2 jam
     - cron: '0 7 * * *'   # Live jam 3 sore WITA
   workflow_dispatch:
     inputs:
@@ -22,14 +22,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install Tools
+          
+      - name: Install Tools & 3D Fonts
         run: |
-          sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
+          sudo apt-get update
+          
+          # [PENTING] Terima lisensi font Microsoft otomatis agar instalasi tidak macet
+          echo ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true | sudo debconf-set-selections
+          
+          # Install FFmpeg dan Font Comic Sans
+          sudo apt-get install -y ffmpeg fonts-dejavu-core ttf-mscorefonts-installer fontconfig
+          sudo fc-cache -f -v
+          
+          # Install Library Python
           pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
+          
       - name: Execute Robot
         env:
           TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
