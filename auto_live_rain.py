@@ -81,8 +81,8 @@ def standardize_video(input_path, output_path, quote, font_path):
     elif rotation == 270: filters.append("transpose=2")
     filters.append("scale=w=1280:h=720:force_original_aspect_ratio=increase,crop=1280:720")
 
-    # Logika Teks 3D Animasi Melayang
-    wrapped_text = "\\n".join(textwrap.wrap(quote, width=30)).replace("'", "").replace(":", "\\:")
+    # LOGIKA YANG SUDAH DIPERBAIKI (safe_txt)
+    safe_txt = "\\n".join(textwrap.wrap(quote, width=30)).replace("'", "").replace(":", "\\:")
     
     # Waktu muncul acak (Misal: Muncul di detik 5 sampai detik 25)
     t_start = random.randint(3, 10)
@@ -123,8 +123,9 @@ def main():
 
     try:
         quotes_pool = get_quotes(drive)
-        v_files = drive.files().list(q=f"'{SOURCE_ID}' in parents and mimeType contains 'video'").execute().get('files', [])
-        m_files = drive.files().list(q=f"'{MUSIC_ID}' in parents and mimeType contains 'audio'").execute().get('files', [])
+        # Tambahkan trashed=false agar tidak mengambil video di keranjang sampah
+        v_files = drive.files().list(q=f"'{SOURCE_ID}' in parents and mimeType contains 'video' and trashed=false").execute().get('files', [])
+        m_files = drive.files().list(q=f"'{MUSIC_ID}' in parents and mimeType contains 'audio' and trashed=false").execute().get('files', [])
 
         if not v_files or not m_files:
             print("⛔ Bahan Kosong!")
