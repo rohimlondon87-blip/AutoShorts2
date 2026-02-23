@@ -3,26 +3,19 @@ import base64
 import pickle
 import time
 import io
-import random
-from datetime import datetime, timedelta
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 from google.auth.transport.requests import Request
 
 # --- KONFIGURASI MICRO WILD ---
-# Mendukung Dual Token A & B
-CREDENTIAL_SETS = [
-    {'label': 'KUNCI UTAMA (A)', 'token': os.environ.get('TOKEN_DATA'), 'secret': os.environ.get('CLIENT_SECRETS_DATA')},
-    {'label': 'KUNCI CADANGAN (B)', 'token': os.environ.get('TOKEN_DATA_B'), 'secret': os.environ.get('CLIENT_SECRETS_DATA_B')}
-]
-
+TOKEN_DATA = os.environ.get('TOKEN_DATA')
 UPLOTAN_ID = os.environ.get('UPLOTAN_FOLDER_ID')
 DONE_ID = os.environ.get('PROCESSED_FOLDER_ID')
 
-def get_services(token_b64, label):
+def get_services():
     try:
-        if not token_b64: return None, None
-        t_str = token_b64.strip().replace('\xa0', '').replace(" ", "")
+        if not TOKEN_DATA: return None, None
+        t_str = TOKEN_DATA.strip().replace('\xa0', '').replace(" ", "")
         pad = len(t_str) % 4
         if pad: t_str += '=' * (4 - pad)
         creds = pickle.loads(base64.b64decode(t_str))
@@ -33,48 +26,67 @@ def get_services(token_b64, label):
 
 def main():
     print("=== MICRO WILD: ROBOT UPLOAD SHORTS START ===")
-    
-    # Pilih token yang aktif
-    drive, youtube, used_label = None, None, ""
-    for cred in CREDENTIAL_SETS:
-        drive, youtube = get_services(cred['token'], cred['label'])
-        if drive:
-            used_label = cred['label']
-            break
-    
-    if not drive:
-        print("⛔ Semua Token Gagal Login.")
-        return
+    drive, youtube = get_services()
+    if not drive or not youtube: return
 
-    # Ambil antrean terlama (FIFO)
+    # Ambil antrean terlama (FIFO). PENTING: Minta data 'description' juga!
     query = f"'{UPLOTAN_ID}' in parents and mimeType contains 'video' and trashed=false"
-    files = drive.files().list(q=query, orderBy="createdTime", pageSize=1).execute().get('files', [])
+    results = drive.files().list(
+        q=query, 
+        fields="files(id, name, description)", # <-- Kunci perbaikannya ada di sini
+        orderBy="createdTime", 
+        pageSize=1
+    ).execute()
+    
+    files = results.get('files', [])
     
     if not files:
-        print("[-] Antrean Kosong.")
+        print("📭 Antrean Kosong.")
         return
 
     v_file = files[0]
-    print(f"[*] Memproses: {v_file['name']} via {used_label}")
+    print(f"[*] Memproses Video: {v_file['name']}")
 
-    # Download & Upload
+    # Ambil judul dari Deskripsi Drive. Jika kosong, pakai nama file sebagai cadangan.
+    raw_title = v_file.get('description', v_file['name'].split('.')[0].replace('_', ' '))
+    print(f"[*] Judul Ditemukan: {raw_title}")
+
+    # Siapkan tag yang pasti selalu ada di akhir
+    hashtags = " #Shorts #MicroWild"
+    
+    # YouTube membatasi judul maksimal 100 karakter. 
+    # Kita potong teks agar muat jika digabung dengan hashtag.
+    max_len = 100 - len(hashtags)
+    if len(raw_title) > max_len:
+        raw_title = raw_title[:max_len-3] + "..."
+        
+    final_title = raw_title + hashtags
+
     with open("temp_up.mp4", "wb") as f:
         f.write(drive.files().get_media(fileId=v_file['id']).execute())
 
     body = {
-        'snippet': {'title': f"{v_file['name'].split('.')[0]} #shorts #microwild", 'categoryId': '22'},
+        'snippet': {
+            'title': final_title, 
+            'description': 'Suasana menenangkan oleh Micro Wild. #Shorts #Alam #Healing', 
+            'categoryId': '22'
+        },
         'status': {'privacyStatus': 'public', 'selfDeclaredMadeForKids': False}
     }
     
     try:
+        print(f"[*] Mengunggah ke YouTube dengan judul: {final_title}")
         res = youtube.videos().insert(part='snippet,status', body=body, media_body=MediaFileUpload("temp_up.mp4")).execute()
-        print(f"[✅] SUKSES! Video ID: {res['id']}")
+        print(f"✅ SUKSES! Video ID: {res['id']}")
         
-        # Pindahkan ke folder Selesai
-        drive.files().update(fileId=v_file['id'], addParents=DONE_ID, removeParents=UPLOTAN_ID).execute()
-        print("[✨] Berhasil diarsipkan.")
+        # Arsipkan file agar tidak dobel upload
+        if DONE_ID:
+            drive.files().update(fileId=v_file['id'], addParents=DONE_ID, removeParents=UPLOTAN_ID).execute()
+        else:
+            drive.files().delete(fileId=v_file['id']).execute()
+            
     except Exception as e:
-        print(f"❌ Gagal: {e}")
+        print(f"❌ Gagal Upload: {e}")
 
     if os.path.exists("temp_up.mp4"): os.remove("temp_up.mp4")
 
