@@ -89,7 +89,7 @@ def upload_to_youtube(youtube, file_path, metadata_text, label):
     body = {
         'snippet': {
             'title': metadata_text[:100],
-            'description': f"{metadata_text}\n\n#shorts #viral #mucrowild",
+            'description': f"{metadata_text}\n\n#shorts #viral #microwild",
             'categoryId': '22'
         },
         'status': {
