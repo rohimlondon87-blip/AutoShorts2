@@ -81,10 +81,12 @@ def standardize_video(input_path, output_path, quote, font_path):
     elif rotation == 270: filters.append("transpose=2")
     filters.append("scale=w=1280:h=720:force_original_aspect_ratio=increase,crop=1280:720")
 
-    # LOGIKA YANG SUDAH DIPERBAIKI (safe_txt)
-    safe_txt = "\\n".join(textwrap.wrap(quote, width=30)).replace("'", "").replace(":", "\\:")
+    # LOGIKA BARU: Maksimal 4 kata per baris agar susunannya rapi ke bawah
+    words = quote.split()
+    chunks = [" ".join(words[i:i+4]) for i in range(0, len(words), 4)]
+    safe_txt = "\\n".join(chunks).replace("'", "").replace(":", "\\:")
     
-    # Waktu muncul acak (Misal: Muncul di detik 5 sampai detik 25)
+    # Waktu muncul acak (Misal: Muncul di detik 3 sampai detik 23)
     t_start = random.randint(3, 10)
     t_duration = random.randint(10, 20)
     t_end = t_start + t_duration
