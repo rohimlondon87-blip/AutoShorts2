@@ -1,9 +1,16 @@
 name: MICRO WILD - Automated System
 
+# Fitur penamaan log dinamis (Tampil jelas di tab Actions)
+run-name: >-
+  ${{ github.event_name == 'workflow_dispatch' && format('[{0}] Eksekusi Manual', github.event.inputs.pilih_tugas) || 
+      github.event.schedule == '0 18,12 * * *' && '[RENDER] Proses Video Harian' || 
+      github.event.schedule == '0 7 * * *' && '[LIVE] Siaran Langsung Berjalan' || 
+      '[UPLOAD] Mengunggah Video Shorts' }}
+
 on:
   schedule:
-    - cron: '0 18,12 * * *' # Render jam 2 pagi WITA
-    - cron: '0 23,0,2,4,6,8,10,12,14,16,18,20,22 * * *' # Upload setiap 2 jam
+    - cron: '0 18,12 * * *' # Render jam 2 pagi & 8 malam WITA
+    - cron: '0 23,0,2,4,6,8,10,12,14,16,18,20,22 * * *' # Upload rutin
     - cron: '0 7 * * *'   # Live jam 3 sore WITA
   workflow_dispatch:
     inputs:
@@ -68,7 +75,7 @@ jobs:
             
           # JIKA DIJALANKAN OTOMATIS OLEH JADWAL (CRON)
           else
-            if [[ "${{ github.event.schedule }}" == "0 18 * * *" ]]; then
+            if [[ "${{ github.event.schedule }}" == "0 18,12 * * *" ]]; then
               python render_shorts.py
             elif [[ "${{ github.event.schedule }}" == "0 7 * * *" ]]; then
               python auto_live_rain.py
