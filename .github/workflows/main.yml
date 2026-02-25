@@ -1,21 +1,32 @@
 name: MICRO WILD - Automated System
 
-# Fitur penamaan log dinamis (Tampil jelas di tab Actions)
 run-name: >-
   ${{ github.event_name == 'workflow_dispatch' && format('[{0}] Eksekusi Manual', github.event.inputs.pilih_tugas) || 
       github.event.schedule == '0 18,12 * * *' && '[RENDER] Proses Video Harian' || 
       github.event.schedule == '0 7 * * *' && '[LIVE] Siaran Langsung Berjalan' || 
-      '[UPLOAD] Mengunggah Video Shorts' }}
+      format('[UPLOAD] Shorts Acak ({0})', github.event.schedule) }}
 
 on:
   schedule:
-    - cron: '0 18,12 * * *' # Render jam 2 pagi & 8 malam WITA
-    - cron: '0 23,0,2,4,6,8,10,12,14,16,18,20,22 * * *' # Upload rutin
-    - cron: '0 7 * * *'   # Live jam 3 sore WITA
+    # --- JADWAL RENDER (2x Sehari) ---
+    # Jam 02:00 & 20:00 WITA
+    - cron: '0 18,12 * * *'
+
+    # --- JADWAL LIVE (1x Sehari) ---
+    # Jam 15:00 WITA
+    - cron: '0 7 * * *'
+
+    # --- JADWAL UPLOAD SHORTS (13x Sehari) ---
+    # Angka di bawah adalah jam dalam UTC. 
+    # Jadwal WITA (UTC+8): 
+    # 06:00, 08:00, 09:00, 11:00, 13:00, 15:00, 17:00, 
+    # 18:00, 19:00, 20:00, 21:00, 22:00, 00:00
+    - cron: '0 22,0,1,3,5,7,9,10,11,12,13,14,16 * * *'
+
   workflow_dispatch:
     inputs:
       pilih_tugas:
-        description: 'Pilih tugas yang ingin dijalankan sekarang:'
+        description: 'Pilih tugas:'
         required: true
         default: 'upload'
         type: choice
@@ -38,15 +49,9 @@ jobs:
       - name: Install Tools & 3D Fonts
         run: |
           sudo apt-get update
-          
-          # [PENTING] Terima lisensi font Microsoft otomatis agar instalasi tidak macet
           echo ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true | sudo debconf-set-selections
-          
-          # Install FFmpeg dan Font Comic Sans
           sudo apt-get install -y ffmpeg fonts-dejavu-core ttf-mscorefonts-installer fontconfig
           sudo fc-cache -f -v
-          
-          # Install Library Python
           pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
           
       - name: Execute Robot
@@ -62,7 +67,6 @@ jobs:
           QUOTES_FILE_ID: ${{ secrets.QUOTES_FILE_ID }}
           YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
         run: |
-          # JIKA DIJALANKAN SECARA MANUAL (KLIK TOMBOL)
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "Menjalankan tugas manual: ${{ github.event.inputs.pilih_tugas }}"
             if [[ "${{ github.event.inputs.pilih_tugas }}" == "render" ]]; then
@@ -73,12 +77,21 @@ jobs:
               python upload_shorts.py
             fi
             
-          # JIKA DIJALANKAN OTOMATIS OLEH JADWAL (CRON)
           else
-            if [[ "${{ github.event.schedule }}" == "0 18,12 * * *" ]]; then
-              python render_shorts.py
+            # Deteksi Tugas Berdasarkan Jam Cron
+            # Jika jam 18 atau 12 (UTC), jalankan RENDER
+            if [[ "${{ github.event.schedule }}" == *"18"* ]] || [[ "${{ github.event.schedule }}" == *"12"* ]]; then
+               # Cek apakah ini jam upload (jam 12, 13, 14 ada di jadwal upload juga)
+               # Kita prioritaskan Upload jika bentrok, atau pisahkan logika
+               if [[ "${{ github.event.schedule }}" == "0 18,12 * * *" ]]; then
+                 python render_shorts.py
+               else
+                 python upload_shorts.py
+               fi
+            # Jika jam 7 (UTC), jalankan LIVE
             elif [[ "${{ github.event.schedule }}" == "0 7 * * *" ]]; then
               python auto_live_rain.py
+            # Sisanya adalah jadwal UPLOAD
             else
               python upload_shorts.py
             fi
