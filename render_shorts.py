@@ -19,8 +19,8 @@ MUSIC_ID = os.environ.get('MUSIC_FOLDER_ID')
 UPLOTAN_ID = os.environ.get('UPLOTAN_FOLDER_ID') 
 QUOTES_ID = os.environ.get('QUOTES_FILE_ID') 
 
-MAX_DURATION = 15 
-BATCH_LIMIT = 5 
+MAX_DURATION = 45 
+BATCH_LIMIT = 7 
 
 # Cadangan jika Drive Gagal Total
 INTERNAL_BACKUP = [
