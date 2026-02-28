@@ -17,8 +17,8 @@ MUSIC_ID = os.environ.get('MUSIC_FOLDER_ID')
 QUOTES_ID = os.environ.get('QUOTES_FILE_ID')
 STREAM_KEY = os.environ.get('YOUTUBE_STREAM_KEY')
 
-LIVE_DURATION_SEC = random.randint(2700, 3900) # 45-65 Menit
-DELAY_MENIT = random.randint(0, 1)
+# Kunci Durasi menjadi 1 Jam (3600 Detik)
+LIVE_DURATION_SEC = random.randint(3500, 3700) 
 
 def get_services():
     try:
@@ -119,7 +119,6 @@ def standardize_video(input_path, output_path, quote, font_path):
 def main():
     print(f"=== ROBOT LIVE NATURAL & 3D TEXT ===")
     
-    # CEK STREAM KEY SEBELUM MULAI
     if not STREAM_KEY or len(STREAM_KEY) < 10:
         print("⛔ FATAL ERROR: YOUTUBE_STREAM_KEY KOSONG ATAU SALAH FORMAT!")
         return
@@ -160,14 +159,15 @@ def main():
         with open("m_list.txt", "w") as f: f.write(m_list)
 
         rtmp = f"rtmp://a.rtmp.youtube.com/live2/{STREAM_KEY.strip()}"
-        print(f"\n[🚀] MEMULAI STREAMING KE YOUTUBE...")
+        print(f"\n[🚀] MEMULAI STREAMING KE YOUTUBE ({LIVE_DURATION_SEC} Detik)...")
 
+        # PERBAIKAN: Mengubah amix duration dari first menjadi longest, dan mengandalkan parameter -t
         cmd = [
             'ffmpeg', '-y', '-re',
-            '-f', 'concat', '-safe', '0', '-stream_loop', '-1', '-i', 'v_list.txt',
-            '-f', 'concat', '-safe', '0', '-stream_loop', '-1', '-i', 'm_list.txt',
-            '-filter_complex', '[0:a]volume=0.3[va];[1:a]volume=1.0[ma];[va][ma]amix=inputs=2:duration=first[aout]',
-            '-t', str(LIVE_DURATION_SEC),
+            '-stream_loop', '-1', '-f', 'concat', '-safe', '0', '-i', 'v_list.txt',
+            '-stream_loop', '-1', '-f', 'concat', '-safe', '0', '-i', 'm_list.txt',
+            '-filter_complex', '[0:a]volume=0.3[va];[1:a]volume=1.0[ma];[va][ma]amix=inputs=2:duration=longest[aout]',
+            '-t', str(LIVE_DURATION_SEC), # Kunci durasi mati di sini
             '-map', '0:v', '-map', '[aout]',
             '-c:v', 'libx264', '-preset', 'ultrafast', '-b:v', '2500k', 
             '-g', '48', '-keyint_min', '48', 
@@ -175,28 +175,24 @@ def main():
             '-f', 'flv', rtmp
         ]
 
-        # PERBAIKAN PELACAKAN ERROR FFMPEG
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         
         berhasil_konek = False
         for line in process.stdout:
             if "frame=" in line:
                 berhasil_konek = True
-                # Tampilkan info frame agar kita tahu robot sedang jalan
                 print(f"Streaming: {line.strip()[:80]}", end="\r", flush=True)
             elif "Connection refused" in line or "I/O error" in line or "Server error" in line:
                 print(f"\n[⛔ ERROR YOUTUBE]: {line.strip()}")
             elif not berhasil_konek and ("rtmp" in line.lower() or "error" in line.lower()):
-                # Cetak pesan awal untuk mengetahui alasan penolakan
                 print(f"[INFO]: {line.strip()}")
                 
         process.wait()
 
         if process.returncode != 0:
             print(f"\n❌ STREAMING TERPUTUS! (Kode Error FFmpeg: {process.returncode})")
-            print("=> Cek YOUTUBE_STREAM_KEY di GitHub Secrets. Pastikan kuncinya benar!")
         else:
-            print(f"\n✅ STREAMING SELESAI DENGAN SUKSES.")
+            print(f"\n✅ STREAMING SELESAI DENGAN SUKSES (Tercapai Target 1 Jam).")
 
     except Exception as e:
         print(f"\n⛔ ERROR SISTEM: {e}")
