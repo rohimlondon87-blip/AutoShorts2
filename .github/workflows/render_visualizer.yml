@@ -1,0 +1,42 @@
+name: Robot Audio Visualizer (HD)
+
+run-name: >-
+  ${{ github.event_name == 'workflow_dispatch' && '🎨 Eksekusi Manual: Render Audio HD' || 
+      format('⏰ Otomatis ({0}): Render Audio HD', github.event.schedule) }}
+
+on:
+  workflow_dispatch:
+  schedule:
+    # --- JADWAL RENDER 4 KALI SEHARI (Waktu WITA = UTC+8) ---
+    # 0 0 * * * = Jam 08:00 Pagi WITA
+    # 0 5 * * * = Jam 13:00 Siang WITA
+    # 0 10 * * * = Jam 18:00 Sore WITA
+    # 0 15 * * * = Jam 23:00 Malam WITA
+    - cron: '0 0,5,10,15 * * *'
+
+jobs:
+  render_visual:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install FFmpeg & Library Pustaka
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
+
+      - name: Eksekusi Robot Visualizer
+        env:
+          TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
+          IMAGE_FOLDER_ID: ${{ secrets.IMAGE_FOLDER_ID }}
+          MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
+          UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
+          PROCESSED_FOLDER_ID: ${{ secrets.PROCESSED_FOLDER_ID }}
+        run: python render_audio_image.py
