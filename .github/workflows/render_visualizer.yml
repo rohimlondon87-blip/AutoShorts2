@@ -32,11 +32,11 @@ jobs:
           sudo apt-get install -y ffmpeg
           pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
 
-      - name: Eksekusi Robot Visualizer
+     - name: Eksekusi Robot Visualizer
         env:
           TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
           IMAGE_FOLDER_ID: ${{ secrets.IMAGE_FOLDER_ID }}
-          MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
-          UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
-          PROCESSED_FOLDER_ID: ${{ secrets.PROCESSED_FOLDER_ID }}
+          AUDIO_VISUAL_ID: ${{ secrets.AUDIO_VISUAL_ID }}
+          UPLOTAN_VISUAL_ID: ${{ secrets.UPLOTAN_VISUAL_ID }}
+          PROCESSED_VISUAL_ID: ${{ secrets.PROCESSED_VISUAL_ID }}
         run: python render_audio_image.py
