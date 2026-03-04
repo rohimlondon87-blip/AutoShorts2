@@ -1,0 +1,34 @@
+name: Upload Video Musik (Visualizer)
+
+on:
+  schedule:
+    # Berjalan 2 kali sehari (Jam 09:00 dan 16:00 WITA)
+    # Anda bisa ubah jadwal ini sesuai kebutuhan
+    - cron: '0 1,8 * * *'
+  workflow_dispatch:
+
+jobs:
+  upload_music:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ambil Kode
+        uses: actions/checkout@v4
+
+      - name: Siapkan Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Pustaka
+        run: pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
+
+      - name: Eksekusi Upload
+        env:
+          # --- MENGGUNAKAN KUNCI A (UTAMA) ---
+          TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
+          CLIENT_SECRETS_DATA: ${{ secrets.CLIENT_SECRETS_DATA }}
+          
+          # --- FOLDER TARGET ---
+          UPLOTAN_VISUAL_ID: ${{ secrets.UPLOTAN_VISUAL_ID }}
+          SELELSAI_ID: ${{ secrets.PROCESSED_VISUAL_ID }}
+        run: python upload_visualizer.py
