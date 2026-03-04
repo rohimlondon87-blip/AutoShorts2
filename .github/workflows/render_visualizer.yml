@@ -32,7 +32,8 @@ jobs:
           sudo apt-get install -y ffmpeg
           pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
 
-     - name: Eksekusi Robot Visualizer
+
+- name: Eksekusi Robot Visualizer
         env:
           TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
           IMAGE_FOLDER_ID: ${{ secrets.IMAGE_FOLDER_ID }}
