@@ -30,5 +30,5 @@ jobs:
           
           # --- FOLDER TARGET ---
           UPLOTAN_VISUAL_ID: ${{ secrets.UPLOTAN_VISUAL_ID }}
-          SELELSAI_ID: ${{ secrets.PROCESSED_VISUAL_ID }}
+          SELESAI_ID: ${{ secrets.SELESAI_ID }}
         run: python upload_visualizer.py
