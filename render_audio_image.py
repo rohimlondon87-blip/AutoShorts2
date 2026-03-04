@@ -9,13 +9,13 @@ from googleapiclient.http import MediaFileUpload
 from google.auth.transport.requests import Request
 
 # --- KONFIGURASI FOLDER ---
-TOKEN_DATA = os.environ.get('TOKEN_DATA')
+TOKEN_DATA = os.environ.get('TOKEN_DATA') # Kunci Akses TETAP SAMA
 
-# Gembok Folder di GitHub Secrets
-IMAGE_FOLDER_ID = os.environ.get('IMAGE_FOLDER_ID') # Folder berisi bahan gambar (.jpg / .png)
-AUDIO_FOLDER_ID = os.environ.get('MUSIC_FOLDER_ID') # Menggunakan folder musik yang sudah ada
-RENDER_OUTPUT_ID = os.environ.get('UPLOTAN_FOLDER_ID') # Folder untuk menyimpan hasil render
-PROCESSED_ID = os.environ.get('PROCESSED_FOLDER_ID') # Folder pembuangan bahan yang sudah dipakai
+# Gembok Folder di GitHub Secrets (KHUSUS UNTUK VISUALIZER)
+IMAGE_FOLDER_ID = os.environ.get('IMAGE_FOLDER_ID') # Folder Gambar (.jpg/.png)
+AUDIO_FOLDER_ID = os.environ.get('AUDIO_VISUAL_ID') # Folder Musik (Berbeda dari Shorts)
+RENDER_OUTPUT_ID = os.environ.get('UPLOTAN_VISUAL_ID') # Folder Hasil Render Panjang
+PROCESSED_ID = os.environ.get('PROCESSED_VISUAL_ID') # Folder Arsip Bahan Panjang
 
 def get_services():
     try:
