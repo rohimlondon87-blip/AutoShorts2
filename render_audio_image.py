@@ -39,11 +39,9 @@ def get_quotes_batch(service, count=3):
             request = service.files().export_media(fileId=QUOTES_ID, mimeType='text/plain')
         else:
             request = service.files().get_media(fileId=QUOTES_ID)
-        
         downloader = MediaIoBaseDownload(fh, request)
         done = False
         while not done: _, done = downloader.next_chunk()
-        
         lines = [l.strip() for l in fh.getvalue().decode('utf-8-sig').splitlines() if len(l.strip()) > 5]
         if len(lines) < count: return (lines + ["Tetap Semangat", "Fokus", "Micro Wild"])[:count]
         return random.sample(lines, count)
@@ -51,11 +49,7 @@ def get_quotes_batch(service, count=3):
         return ["Ketenangan adalah kunci.", "Teruslah melangkah.", "Hari yang indah menanti."]
 
 def find_font():
-    paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-        "/usr/share/fonts/truetype/msttcorefonts/Arial_Bold.ttf"
-    ]
+    paths = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"]
     for p in paths:
         if os.path.exists(p): return p
     return None
@@ -73,47 +67,21 @@ def move_file(service, file_id, old_parent):
             print(f"    -> Berkas dipindahkan ke Arsip.")
         except: pass
 
-def main():
-    print("=== ROBOT RENDER HD 16:9 (FIX spectrum & timing) ===")
-    drive = get_services()
-    font_p = find_font()
-    
-    if not drive: return
-    if not font_p:
-        print("⛔ Font tidak ditemukan di server!")
-        return
-
-    # 1. CARI BAHAN TERTUA
-    print("[*] Mencari bahan tertua...")
-    img_res = drive.files().list(q=f"'{IMAGE_FOLDER_ID}' in parents and mimeType contains 'image/' and trashed=false", 
-                                orderBy="createdTime", pageSize=1).execute().get('files', [])
-    aud_res = drive.files().list(q=f"'{AUDIO_FOLDER_ID}' in parents and mimeType contains 'audio/' and trashed=false", 
-                                orderBy="createdTime", pageSize=1).execute().get('files', [])
-
-    if not img_res or not aud_res:
-        print("⛔ Bahan tidak lengkap!")
-        return
-
-    sel_img, sel_aud = img_res[0], aud_res[0]
-    quotes = get_quotes_batch(drive, 3)
-
-    # 2. DOWNLOAD
-    nama_audio = os.path.splitext(sel_aud['name'])[0]
+def process_single_render(drive, img_file, aud_file, font_p):
+    nama_audio = os.path.splitext(aud_file['name'])[0]
     nama_bersih = "".join([c for c in nama_audio if c.isalnum() or c in " _-"]).strip()
     out_name = f"{nama_bersih}.mp4"
     l_img, l_aud = "bg.jpg", "bg.mp3"
 
-    with open(l_img, "wb") as f: f.write(drive.files().get_media(fileId=sel_img['id']).execute())
-    with open(l_aud, "wb") as f: f.write(drive.files().get_media(fileId=sel_aud['id']).execute())
+    print(f"\n[*] Mengunduh: {nama_audio}")
+    with open(l_img, "wb") as f: f.write(drive.files().get_media(fileId=img_file['id']).execute())
+    with open(l_aud, "wb") as f: f.write(drive.files().get_media(fileId=aud_file['id']).execute())
 
-    dur = get_media_duration(l_aud)
+    dur = round(get_media_duration(l_aud), 2)
     if dur == 0: dur = 60 
-    
-    # Membulatkan durasi per quote agar timing stabil
     t_step = round(dur / 3, 2)
-    dur_rounded = round(dur, 2)
+    quotes = get_quotes_batch(drive, 3)
 
-    # 3. RENDER DENGAN FFMPEG FILTER COMPLEX
     def get_drawtext(text, start, end):
         wrapped = "\\n".join(textwrap.wrap(text, width=40))
         safe = wrapped.replace("'", "").replace(":", "\\:")
@@ -122,45 +90,58 @@ def main():
                 f"alpha='if(lt(t,{start}),0,if(lt(t,{start}+1),t-{start},if(lt(t,{end}-1),1,if(lt(t,{end}),{end}-t,0))))':"
                 f"enable='between(t,{start},{end})'")
 
-    txt1 = get_drawtext(quotes[0], 1, t_step)
-    txt2 = get_drawtext(quotes[1], t_step, t_step*2)
-    txt3 = get_drawtext(quotes[2], t_step*2, dur_rounded-1)
-
-    # PERBAIKAN: Menghapus bar_width yang menyebabkan error
     v_filter = (
         f"[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,"
         f"eq=brightness='0.05*sin(2*PI*t*0.5)':contrast=1.1[bg];"
         f"[1:a]showfreqs=s=1920x250:mode=bar:colors=white@0.8[vis];"
         f"[bg][vis]overlay=0:H-h[v1];"
-        f"[v1]{txt1},{txt2},{txt3}[final]"
+        f"[v1]{get_drawtext(quotes[0], 1, t_step)},{get_drawtext(quotes[1], t_step, t_step*2)},{get_drawtext(quotes[2], t_step*2, dur-1)}[final]"
     )
 
     cmd = [
         'ffmpeg', '-y', '-loop', '1', '-i', l_img, '-i', l_aud,
-        '-filter_complex', v_filter,
-        '-map', '[final]', '-map', '1:a',
+        '-filter_complex', v_filter, '-map', '[final]', '-map', '1:a',
         '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', 
-        '-c:a', 'aac', '-b:a', '128k', '-shortest', '-t', str(dur_rounded), out_name
+        '-c:a', 'aac', '-b:a', '128k', '-shortest', '-t', str(dur), out_name
     ]
 
-    print(f"\n[🎬] Merender Video: {out_name} ({dur_rounded}s)")
-    process = subprocess.run(cmd, capture_output=True, text=True)
-
-    if process.returncode == 0:
-        print(f"✅ Render Sukses! Mengunggah...")
+    print(f"[🎬] Merender: {out_name}...")
+    if subprocess.run(cmd, capture_output=True).returncode == 0:
         meta = {'name': out_name, 'parents': [RENDER_OUTPUT_ID]}
         drive.files().create(body=meta, media_body=MediaFileUpload(out_name)).execute()
-        
-        move_file(drive, sel_img['id'], IMAGE_FOLDER_ID)
-        move_file(drive, sel_aud['id'], AUDIO_FOLDER_ID)
-    else:
-        print("\n⛔ FFmpeg Error Detail:")
-        error_lines = process.stderr.splitlines()
-        for line in error_lines[-10:]:
-            print(f"   >> {line}")
+        print(f"✅ Berhasil Upload: {out_name}")
+        move_file(drive, img_file['id'], IMAGE_FOLDER_ID)
+        move_file(drive, aud_file['id'], AUDIO_FOLDER_ID)
+        return True
+    return False
 
-    for f in [l_img, l_aud, out_name]:
-        if os.path.exists(f): os.remove(f)
+def main():
+    print("=== ROBOT RENDER VISUALIZER: MODE CUCI GUDANG (FIFO) ===")
+    drive = get_services()
+    font_p = find_font()
+    if not drive or not font_p: return
+
+    while True:
+        # Cari 1 Gambar Tertua
+        img_res = drive.files().list(q=f"'{IMAGE_FOLDER_ID}' in parents and mimeType contains 'image/' and trashed=false", 
+                                    orderBy="createdTime", pageSize=1).execute().get('files', [])
+        # Cari 1 Audio Tertua
+        aud_res = drive.files().list(q=f"'{AUDIO_FOLDER_ID}' in parents and mimeType contains 'audio/' and trashed=false", 
+                                    orderBy="createdTime", pageSize=1).execute().get('files', [])
+
+        if not img_res or not aud_res:
+            print("\n[🏁] Selesai! Bahan di folder sudah habis.")
+            break
+
+        success = process_single_render(drive, img_res[0], aud_res[0], font_p)
+        if not success:
+            print("⚠️ Terjadi kesalahan pada satu file, mencoba file berikutnya...")
+            # Pindahkan file yang rusak ke arsip agar tidak macet di sini
+            move_file(drive, aud_res[0]['id'], AUDIO_FOLDER_ID)
+        
+        # Bersihkan file lokal sebelum loop berikutnya
+        for f in ["bg.jpg", "bg.mp3"]:
+            if os.path.exists(f): os.remove(f)
 
 if __name__ == "__main__":
     main()
