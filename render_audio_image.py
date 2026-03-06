@@ -32,7 +32,6 @@ def get_services():
         return None
 
 def get_quotes_batch(service, count=3):
-    """Mengambil quotes dari Drive dengan pembersihan baris."""
     try:
         file_meta = service.files().get(fileId=QUOTES_ID).execute()
         fh = io.BytesIO()
@@ -52,7 +51,6 @@ def get_quotes_batch(service, count=3):
         return ["Ketenangan adalah kunci.", "Teruslah melangkah.", "Hari yang indah menanti."]
 
 def find_font():
-    """Mencari font yang tersedia di server GitHub Actions."""
     paths = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
@@ -76,7 +74,7 @@ def move_file(service, file_id, old_parent):
         except: pass
 
 def main():
-    print("=== ROBOT RENDER HD 16:9 (FIX VERSION) ===")
+    print("=== ROBOT RENDER HD 16:9 (FIX spectrum & timing) ===")
     drive = get_services()
     font_p = find_font()
     
@@ -109,14 +107,16 @@ def main():
     with open(l_aud, "wb") as f: f.write(drive.files().get_media(fileId=sel_aud['id']).execute())
 
     dur = get_media_duration(l_aud)
-    if dur == 0: dur = 60 # Fallback jika durasi tak terbaca
-    t_step = dur / 3
+    if dur == 0: dur = 60 
+    
+    # Membulatkan durasi per quote agar timing stabil
+    t_step = round(dur / 3, 2)
+    dur_rounded = round(dur, 2)
 
-    # 3. RENDER DENGAN FFMPEG FILTER COMPLEX (STABLE LOGIC)
+    # 3. RENDER DENGAN FFMPEG FILTER COMPLEX
     def get_drawtext(text, start, end):
         wrapped = "\\n".join(textwrap.wrap(text, width=40))
         safe = wrapped.replace("'", "").replace(":", "\\:")
-        # Logika Fade In/Out yang lebih stabil
         return (f"drawtext=text='{safe}':fontfile='{font_p}':fontcolor=white:fontsize=45:"
                 f"x=(w-text_w)/2:y=(h-text_h)/2-100:box=1:boxcolor=black@0.4:boxborderw=20:"
                 f"alpha='if(lt(t,{start}),0,if(lt(t,{start}+1),t-{start},if(lt(t,{end}-1),1,if(lt(t,{end}),{end}-t,0))))':"
@@ -124,13 +124,13 @@ def main():
 
     txt1 = get_drawtext(quotes[0], 1, t_step)
     txt2 = get_drawtext(quotes[1], t_step, t_step*2)
-    txt3 = get_drawtext(quotes[2], t_step*2, dur-1)
+    txt3 = get_drawtext(quotes[2], t_step*2, dur_rounded-1)
 
-    # Filter: Scale + Flicker (Pulsing Brightness) + Visualizer Bar + 3 Quotes
+    # PERBAIKAN: Menghapus bar_width yang menyebabkan error
     v_filter = (
         f"[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,"
         f"eq=brightness='0.05*sin(2*PI*t*0.5)':contrast=1.1[bg];"
-        f"[1:a]showfreqs=s=1920x250:mode=bar:colors=white@0.8:bar_width=4[vis];"
+        f"[1:a]showfreqs=s=1920x250:mode=bar:colors=white@0.8[vis];"
         f"[bg][vis]overlay=0:H-h[v1];"
         f"[v1]{txt1},{txt2},{txt3}[final]"
     )
@@ -140,10 +140,10 @@ def main():
         '-filter_complex', v_filter,
         '-map', '[final]', '-map', '1:a',
         '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', 
-        '-c:a', 'aac', '-b:a', '128k', '-shortest', '-t', str(dur), out_name
+        '-c:a', 'aac', '-b:a', '128k', '-shortest', '-t', str(dur_rounded), out_name
     ]
 
-    print(f"\n[🎬] Merender Video: {out_name} ({int(dur)}s)")
+    print(f"\n[🎬] Merender Video: {out_name} ({dur_rounded}s)")
     process = subprocess.run(cmd, capture_output=True, text=True)
 
     if process.returncode == 0:
@@ -151,17 +151,14 @@ def main():
         meta = {'name': out_name, 'parents': [RENDER_OUTPUT_ID]}
         drive.files().create(body=meta, media_body=MediaFileUpload(out_name)).execute()
         
-        # 4. PINDAHKAN BAHAN
         move_file(drive, sel_img['id'], IMAGE_FOLDER_ID)
         move_file(drive, sel_aud['id'], AUDIO_FOLDER_ID)
     else:
         print("\n⛔ FFmpeg Error Detail:")
-        # Ambil 10 baris terakhir dari error log untuk melihat masalah sebenarnya
         error_lines = process.stderr.splitlines()
         for line in error_lines[-10:]:
             print(f"   >> {line}")
 
-    # Bersihkan server
     for f in [l_img, l_aud, out_name]:
         if os.path.exists(f): os.remove(f)
 
