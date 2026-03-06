@@ -4,23 +4,25 @@ import pickle
 import subprocess
 import random
 import time
+import io
+import textwrap
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from google.auth.transport.requests import Request
 
 # --- KONFIGURASI FOLDER ---
-TOKEN_DATA = os.environ.get('TOKEN_DATA') # Kunci Akses TETAP SAMA
-
-# Gembok Folder di GitHub Secrets (KHUSUS UNTUK VISUALIZER)
-IMAGE_FOLDER_ID = os.environ.get('IMAGE_FOLDER_ID') # Folder Gambar (.jpg/.png)
-AUDIO_FOLDER_ID = os.environ.get('AUDIO_VISUAL_ID') # Folder Musik (Berbeda dari Shorts)
-RENDER_OUTPUT_ID = os.environ.get('UPLOTAN_VISUAL_ID') # Folder Hasil Render Panjang
-PROCESSED_ID = os.environ.get('PROCESSED_VISUAL_ID') # Folder Arsip Bahan Panjang
+TOKEN_DATA = os.environ.get('TOKEN_DATA')
+IMAGE_FOLDER_ID = os.environ.get('IMAGE_FOLDER_ID') 
+AUDIO_FOLDER_ID = os.environ.get('AUDIO_VISUAL_ID') 
+RENDER_OUTPUT_ID = os.environ.get('UPLOTAN_VISUAL_ID') 
+PROCESSED_ID = os.environ.get('PROCESSED_VISUAL_ID') 
+QUOTES_ID = os.environ.get('QUOTES_FILE_ID') 
 
 def get_services():
     try:
-        t_str = TOKEN_DATA.strip().replace('\xa0', '').replace(" ", "").replace("\n", "")
-        t_str += '=' * (4 - (len(t_str) % 4))
+        t_str = TOKEN_DATA.strip().replace('\xa0', '').replace(" ", "")
+        pad = len(t_str) % 4
+        if pad: t_str += '=' * (4 - pad)
         creds = pickle.loads(base64.b64decode(t_str))
         if creds.expired and creds.refresh_token:
             creds.refresh(Request())
@@ -29,125 +31,124 @@ def get_services():
         print(f"⛔ Auth Error: {e}")
         return None
 
+def get_quotes_batch(service, count=3):
+    """Mengambil 3 baris quotes acak dari Google Drive."""
+    try:
+        file_meta = service.files().get(fileId=QUOTES_ID).execute()
+        fh = io.BytesIO()
+        if 'application/vnd.google-apps' in file_meta.get('mimeType', ''):
+            request = service.files().export_media(fileId=QUOTES_ID, mimeType='text/plain')
+        else:
+            request = service.files().get_media(fileId=QUOTES_ID)
+        
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done: _, done = downloader.next_chunk()
+        
+        lines = [l.strip() for l in fh.getvalue().decode('utf-8-sig').splitlines() if len(l.strip()) > 5]
+        return random.sample(lines, min(len(lines), count))
+    except:
+        return ["Tetap Tenang.", "Fokus pada Proses.", "Semua Akan Indah."]
+
 def get_media_duration(file_path):
-    """Mendapatkan durasi audio menggunakan FFprobe"""
     try:
         cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', file_path]
         return float(subprocess.check_output(cmd).decode().strip())
-    except: 
-        return 0
+    except: return 0
 
-def move_file_to_processed(service, file_id, old_parent):
-    """Memindahkan bahan yang sudah dipakai ke folder Arsip/Processed"""
-    if PROCESSED_ID and PROCESSED_ID != "***":
+def move_file(service, file_id, old_parent):
+    if PROCESSED_ID:
         try:
             service.files().update(fileId=file_id, addParents=PROCESSED_ID, removeParents=old_parent).execute()
-            print(f"    -> Berkas dipindahkan ke folder Arsip.")
+            print(f"    -> Berkas {file_id} dipindahkan ke Arsip.")
         except Exception as e:
-            print(f"    -> Gagal memindahkan berkas: {e}")
+            print(f"    -> Gagal pindah: {e}")
 
 def main():
-    print("=== ROBOT RENDER AUDIO VISUALIZER (HD 16:9 + NAMA FILE OTOMATIS) ===")
+    print("=== ROBOT RENDER HD 16:9 (ADVANCED VISUALS) ===")
     drive = get_services()
     if not drive: return
 
-    # 1. CARI BAHAN GAMBAR & AUDIO
-    print("[*] Mencari bahan di Google Drive...")
-    
-    img_query = f"'{IMAGE_FOLDER_ID}' in parents and mimeType contains 'image/' and trashed=false"
-    img_results = drive.files().list(q=img_query, fields="files(id, name)").execute()
-    img_files = img_results.get('files', [])
-    
-    aud_query = f"'{AUDIO_FOLDER_ID}' in parents and mimeType contains 'audio/' and trashed=false"
-    aud_results = drive.files().list(q=aud_query, fields="files(id, name)").execute()
-    aud_files = aud_results.get('files', [])
+    # 1. CARI BAHAN TERTUA
+    print("[*] Mencari bahan tertua...")
+    img_res = drive.files().list(q=f"'{IMAGE_FOLDER_ID}' in parents and mimeType contains 'image/' and trashed=false", 
+                                orderBy="createdTime", pageSize=1).execute().get('files', [])
+    aud_res = drive.files().list(q=f"'{AUDIO_FOLDER_ID}' in parents and mimeType contains 'audio/' and trashed=false", 
+                                orderBy="createdTime", pageSize=1).execute().get('files', [])
 
-    if not img_files or not aud_files:
-        print("⛔ Kekurangan Bahan! Pastikan ada minimal 1 Gambar dan 1 Audio di folder masing-masing.")
+    if not img_res or not aud_res:
+        print("⛔ Bahan tidak lengkap!")
         return
 
-    selected_img = random.choice(img_files)
-    selected_aud = random.choice(aud_files)
+    sel_img, sel_aud = img_res[0], aud_res[0]
+    quotes = get_quotes_batch(drive, 3)
 
-    print(f"[*] Bahan Terpilih:")
-    print(f"    - Gambar : {selected_img['name']}")
-    print(f"    - Audio  : {selected_aud['name']}")
+    # 2. DOWNLOAD & PREPARE
+    nama_bersih = "".join([c for c in os.path.splitext(sel_aud['name'])[0] if c.isalnum() or c in " _-"]).strip()
+    out_name = f"{nama_bersih}.mp4"
+    l_img, l_aud = "bg.jpg", "bg.mp3"
 
-    # 2. DOWNLOAD BAHAN & SIAPKAN NAMA FILE OUTPUT
-    img_ext = os.path.splitext(selected_img['name'])[1] or '.jpg'
-    aud_ext = os.path.splitext(selected_aud['name'])[1] or '.mp3'
+    with open(l_img, "wb") as f: f.write(drive.files().get_media(fileId=sel_img['id']).execute())
+    with open(l_aud, "wb") as f: f.write(drive.files().get_media(fileId=sel_aud['id']).execute())
+
+    dur = get_media_duration(l_aud)
+    t_step = dur / 3 # Durasi per quote
+
+    # 3. RENDER DENGAN FFMPEG FILTER COMPLEX
+    # Filter 1: Scale/Crop 16:9 + Flicker (eq brightness pulsing)
+    # Filter 2: Audio Visualizer bar (putih transparan)
+    # Filter 3: 3 Quotes bergantian dengan fade halus
     
-    # MENGAMBIL NAMA FILE AUDIO UNTUK HASIL AKHIR (Tanpa ekstensi .mp3)
-    nama_audio_asli = os.path.splitext(selected_aud['name'])[0]
-    # Membersihkan nama file dari karakter yang mungkin dilarang oleh sistem
-    nama_bersih = "".join([c for c in nama_audio_asli if c.isalpha() or c.isdigit() or c in " _-"]).strip()
+    font_p = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
     
-    local_img = f"bahan_gambar{img_ext}"
-    local_aud = f"bahan_audio{aud_ext}"
-    
-    # NAMA FILE HASIL RENDER AKAN MENGIKUTI NAMA AUDIO
-    output_file = f"{nama_bersih}.mp4"
+    def get_drawtext(text, start, end):
+        wrapped = "\\n".join(textwrap.wrap(text, width=40))
+        safe = wrapped.replace("'", "").replace(":", "\\:")
+        return (f"drawtext=text='{safe}':fontfile={font_p}:fontcolor=white:fontsize=45:"
+                f"x=(w-text_w)/2:y=(h-text_h)/2-100:box=1:boxcolor=black@0.4:boxborderw=20:"
+                f"alpha='if(lt(t,{start}),0,if(lt(t,{start}+1),(t-{start})/1,if(lt(t,{end}-1),1,if(lt(t,{end}),({end}-t)/1,0))))':"
+                f"enable='between(t,{start},{end})'")
 
-    with open(local_img, "wb") as f:
-        f.write(drive.files().get_media(fileId=selected_img['id']).execute())
-    with open(local_aud, "wb") as f:
-        f.write(drive.files().get_media(fileId=selected_aud['id']).execute())
+    text_filters = ",".join([get_drawtext(quotes[0], 0, t_step), 
+                             get_drawtext(quotes[1], t_step, t_step*2), 
+                             get_drawtext(quotes[2], t_step*2, dur)])
 
-    # 3. PROSES RENDER (FFMPEG) DENGAN EFEK VISUALIZER
-    durasi_audio = get_media_duration(local_aud)
-    print(f"[*] Durasi Audio Terdeteksi: {durasi_audio:.2f} Detik")
-
-    warna_visual = random.choice(["cyan", "yellow", "red", "00FF00", "magenta", "orange", "white"])
-    print(f"[*] Warna Audio Visualizer: {warna_visual.upper()}")
-    print(f"[*] Nama File Target: {output_file}")
-
+    # Logika Gabungan: 
+    # [bg] = flicker + scale
+    # [vis] = visualizer bar
+    # [final] = bg + vis + 3 quotes
     v_filter = (
-        f"[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080[bg];"
-        f"[1:a]showfreqs=s=1920x300:mode=bar:colors={warna_visual}[wave];"
-        f"[bg][wave]overlay=0:H-h"
+        f"[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,"
+        f"eq=brightness='0.08*sin(2*PI*t*0.5)':contrast=1.1[bg];" # Efek Cahaya Berkedip
+        f"[1:a]showfreqs=s=1920x250:mode=bar:colors=white@0.8:bar_width=4:fscale=log[vis];" # Visualizer Bar
+        f"[bg][vis]overlay=0:H-h[v_temp];"
+        f"[v_temp]{text_filters}"
     )
 
     cmd = [
-        'ffmpeg', '-y', 
-        '-loop', '1', '-i', local_img,
-        '-i', local_aud,
+        'ffmpeg', '-y', '-loop', '1', '-i', l_img, '-i', l_aud,
         '-filter_complex', v_filter,
-        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', 
-        '-c:a', 'aac', '-b:a', '128k', 
-        '-t', str(durasi_audio),
-        output_file
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '25', 
+        '-c:a', 'aac', '-b:a', '192k', '-shortest', '-t', str(dur), out_name
     ]
 
-    print("\n[🎬] Mulai Merender Video Landscape HD...")
+    print(f"\n[🎬] Merender Video Estetik: {out_name}")
     res = subprocess.run(cmd, capture_output=True)
 
-    if res.returncode != 0:
-        print("⛔ FFmpeg Error saat merender video.")
+    if res.returncode == 0:
+        print(f"✅ Render Sukses! Mengunggah...")
+        meta = {'name': out_name, 'parents': [RENDER_OUTPUT_ID]}
+        drive.files().create(body=meta, media_body=MediaFileUpload(out_name)).execute()
+        
+        # 4. PINDAHKAN BAHAN
+        move_file(drive, sel_img['id'], IMAGE_FOLDER_ID)
+        move_file(drive, sel_aud['id'], AUDIO_FOLDER_ID)
     else:
-        print(f"✅ Render Berhasil! Menyimpan ke Google Drive...")
-        
-        # 4. UPLOAD HASIL RENDER KE FOLDER 'UPLOTAN'
-        file_metadata = {
-            'name': output_file,
-            'parents': [RENDER_OUTPUT_ID]
-        }
-        drive.files().create(
-            body=file_metadata,
-            media_body=MediaFileUpload(output_file, mimetype='video/mp4', resumable=True)
-        ).execute()
-        
-        print(f"🎉 Video '{output_file}' berhasil disimpan ke folder Siap Upload!")
+        print(f"⛔ Gagal: {res.stderr.decode()[:500]}")
 
-        # 5. PINDAHKAN BAHAN YANG SUDAH DIPAKAI
-        print("[*] Merapikan file bahan...")
-        move_file_to_processed(drive, selected_img['id'], IMAGE_FOLDER_ID)
-        move_file_to_processed(drive, selected_aud['id'], AUDIO_FOLDER_ID)
-
-    # 6. BERSIH-BERSIH SERVER
-    for f in [local_img, local_aud, output_file]:
-        if os.path.exists(f):
-            try: os.remove(f)
-            except: pass
+    # Bersihkan server
+    for f in [l_img, l_aud, out_name]:
+        if os.path.exists(f): os.remove(f)
 
 if __name__ == "__main__":
     main()
