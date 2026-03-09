@@ -1,12 +1,25 @@
 name: Master Otomasi Micro Wild
 
 on:
+  # Fitur Tes Manual dengan Pilihan Tugas
   workflow_dispatch:
+    inputs:
+      pilih_tugas:
+        description: 'Pilih tugas yang ingin dijalankan secara manual:'
+        required: true
+        default: 'upload'
+        type: choice
+        options:
+          - upload
+          - render
+          - live
+          - compile
+
   schedule:
-    # 1. Render Shorts (Dini Hari Jam 02:00 WITA = 18:00 UTC)
+    # 1. Render Shorts (02:00 WITA = 18:00 UTC)
     - cron: '0 18 * * *'
     
-    # 2. Upload Shorts (Tiga Kali Sehari: Jam 08:00, 16:00, 00:00 WITA)
+    # 2. Upload Shorts (08, 16, 00 WITA = 00, 08, 16 UTC)
     - cron: '0 0,8,16 * * *'
     
     # 3. Live Streaming (Setiap Senin Jam 09:00 WITA = 01:00 UTC)
@@ -35,9 +48,11 @@ jobs:
           sudo apt-get install -y ffmpeg
           pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
 
-      # --- TUGAS 1: RENDER SHORTS (SETIAP HARI) ---
+      # --- TUGAS 1: RENDER SHORTS ---
       - name: Jalankan Render Shorts
-        if: github.event.schedule == '0 18 * * *' || github.event_name == 'workflow_dispatch'
+        if: |
+          (github.event_name == 'workflow_dispatch' && github.event.inputs.pilih_tugas == 'render') || 
+          (github.event.schedule == '0 18 * * *')
         env:
           TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
           SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
@@ -46,9 +61,11 @@ jobs:
           QUOTES_FILE_ID: ${{ secrets.QUOTES_FILE_ID }}
         run: python render_shorts_auto.py
 
-      # --- TUGAS 2: UPLOAD SHORTS (3X SEHARI) ---
+      # --- TUGAS 2: UPLOAD SHORTS ---
       - name: Jalankan Upload Shorts
-        if: contains('0 0,8,16 * * *', github.event.schedule) || github.event_name == 'workflow_dispatch'
+        if: |
+          (github.event_name == 'workflow_dispatch' && github.event.inputs.pilih_tugas == 'upload') || 
+          (github.event_name == 'schedule' && contains('0 0,8,16 * * *', github.event.schedule))
         env:
           TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
           CLIENT_SECRETS_DATA: ${{ secrets.CLIENT_SECRETS_DATA }}
@@ -56,9 +73,11 @@ jobs:
           PROCESSED_FOLDER_ID: ${{ secrets.SHORT_SELESAI_ID }}
         run: python auto_shorts.py
 
-      # --- TUGAS 3: LIVE STREAMING (SENIN PAGI) ---
+      # --- TUGAS 3: LIVE STREAMING ---
       - name: Jalankan Live Stream
-        if: github.event.schedule == '0 1 * * 1' || github.event_name == 'workflow_dispatch'
+        if: |
+          (github.event_name == 'workflow_dispatch' && github.event.inputs.pilih_tugas == 'live') || 
+          (github.event.schedule == '0 1 * * 1')
         env:
           TOKEN_DATA: ${{ secrets.TOKEN_DATA_B }}
           YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
@@ -66,9 +85,11 @@ jobs:
           MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
         run: python auto_live_rain.py
 
-      # --- TUGAS 4: KOMPILASI VIDEO PANJANG (MINGGU DINI HARI) ---
+      # --- TUGAS 4: KOMPILASI VIDEO PANJANG ---
       - name: Jalankan Kompilasi Video
-        if: github.event.schedule == '0 19 * * 6' || github.event_name == 'workflow_dispatch'
+        if: |
+          (github.event_name == 'workflow_dispatch' && github.event.inputs.pilih_tugas == 'compile') || 
+          (github.event.schedule == '0 19 * * 6')
         env:
           TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
           input_video_id: ${{ secrets.input_video_id }}
