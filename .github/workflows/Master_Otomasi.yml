@@ -1,0 +1,78 @@
+name: Master Otomasi Micro Wild
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 1. Render Shorts (Dini Hari Jam 02:00 WITA = 18:00 UTC)
+    - cron: '0 18 * * *'
+    
+    # 2. Upload Shorts (Tiga Kali Sehari: Jam 08:00, 16:00, 00:00 WITA)
+    - cron: '0 0,8,16 * * *'
+    
+    # 3. Live Streaming (Setiap Senin Jam 09:00 WITA = 01:00 UTC)
+    - cron: '0 1 * * 1'
+    
+    # 4. Kompilasi Video Panjang (Setiap Minggu Jam 03:00 WITA = 19:00 UTC Sabtu)
+    - cron: '0 19 * * 6'
+
+jobs:
+  automation_task:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360 # Maksimal 6 jam untuk proses render
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
+
+      # --- TUGAS 1: RENDER SHORTS (SETIAP HARI) ---
+      - name: Jalankan Render Shorts
+        if: github.event.schedule == '0 18 * * *' || github.event_name == 'workflow_dispatch'
+        env:
+          TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
+          SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
+          MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
+          UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
+          QUOTES_FILE_ID: ${{ secrets.QUOTES_FILE_ID }}
+        run: python render_shorts_auto.py
+
+      # --- TUGAS 2: UPLOAD SHORTS (3X SEHARI) ---
+      - name: Jalankan Upload Shorts
+        if: contains('0 0,8,16 * * *', github.event.schedule) || github.event_name == 'workflow_dispatch'
+        env:
+          TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
+          CLIENT_SECRETS_DATA: ${{ secrets.CLIENT_SECRETS_DATA }}
+          UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
+          PROCESSED_FOLDER_ID: ${{ secrets.SHORT_SELESAI_ID }}
+        run: python auto_shorts.py
+
+      # --- TUGAS 3: LIVE STREAMING (SENIN PAGI) ---
+      - name: Jalankan Live Stream
+        if: github.event.schedule == '0 1 * * 1' || github.event_name == 'workflow_dispatch'
+        env:
+          TOKEN_DATA: ${{ secrets.TOKEN_DATA_B }}
+          YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
+          SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
+          MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
+        run: python auto_live_rain.py
+
+      # --- TUGAS 4: KOMPILASI VIDEO PANJANG (MINGGU DINI HARI) ---
+      - name: Jalankan Kompilasi Video
+        if: github.event.schedule == '0 19 * * 6' || github.event_name == 'workflow_dispatch'
+        env:
+          TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
+          input_video_id: ${{ secrets.input_video_id }}
+          Gabungan_short_id: ${{ secrets.Gabungan_short_id }}
+          Selesai_render_short_id: ${{ secrets.Selesai_render_short_id }}
+          MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
+        run: python auto_compile_long.py
