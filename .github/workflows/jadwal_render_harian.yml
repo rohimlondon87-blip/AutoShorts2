@@ -27,4 +27,4 @@ jobs:
           MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
           UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
           QUOTES_FILE_ID: ${{ secrets.QUOTES_FILE_ID }}
-        run: python render_shorts_auto.py
+        run: python render_shorts.py
