@@ -1,0 +1,25 @@
+name: 2. Robot Upload Shorts
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 08:00, 16:00, 00:00 WITA = 00, 08, 16 UTC
+    - cron: '0 0,8,16 * * *'
+
+jobs:
+  upload_job:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Tools
+        run: pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
+      - name: Run Upload
+        env:
+          TOKEN_DATA: ${{ secrets.TOKEN_DATA }}
+          CLIENT_SECRETS_DATA: ${{ secrets.CLIENT_SECRETS_DATA }}
+          UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
+          PROCESSED_FOLDER_ID: ${{ secrets.SHORT_SELESAI_ID }}
+        run: python auto_shorts.py
