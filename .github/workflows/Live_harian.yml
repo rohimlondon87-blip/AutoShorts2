@@ -1,0 +1,29 @@
+name: 3. Robot Live Stream
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Setiap Senin Jam 09:00 WITA = 01:00 UTC
+    - cron: '0 1 * * 1'
+
+jobs:
+  live_job:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Tools & Fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-dejavu-core
+          pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
+      - name: Run Live
+        env:
+          TOKEN_DATA_B: ${{ secrets.TOKEN_DATA_B }}
+          YOUTUBE_STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
+          SOURCE_LIVE_ID: ${{ secrets.SOURCE_LIVE_ID }}
+          MUSIC_FOLDER_ID: ${{ secrets.MUSIC_FOLDER_ID }}
+          QUOTES_FILE_ID: ${{ secrets.QUOTES_FILE_ID }}
+        run: python auto_live_rain.py
