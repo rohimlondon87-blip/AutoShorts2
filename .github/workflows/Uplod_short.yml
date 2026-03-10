@@ -22,4 +22,4 @@ jobs:
           CLIENT_SECRETS_DATA: ${{ secrets.CLIENT_SECRETS_DATA }}
           UPLOTAN_FOLDER_ID: ${{ secrets.UPLOTAN_FOLDER_ID }}
           PROCESSED_FOLDER_ID: ${{ secrets.SHORT_SELESAI_ID }}
-        run: python auto_shorts.py
+        run: python upload_shorts.py
