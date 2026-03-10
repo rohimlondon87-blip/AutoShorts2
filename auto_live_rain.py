@@ -1,4 +1,4 @@
-$$$import os
+import os
 import base64
 import pickle
 import subprocess
@@ -6,19 +6,20 @@ import random
 import io
 import json
 import time
+import textwrap
+import math
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from google.auth.transport.requests import Request
 
-# --- KONFIGURASI ---
+# --- KONFIGURASI MICRO WILD ---
 TOKEN_B64 = os.environ.get('TOKEN_DATA_B') or os.environ.get('TOKEN_DATA')
 SOURCE_ID = os.environ.get('SOURCE_LIVE_ID')
-MUSIC_ID = os.environ.get('MUSIC_FOLDER_ID')
 QUOTES_ID = os.environ.get('QUOTES_FILE_ID')
 STREAM_KEY = os.environ.get('YOUTUBE_STREAM_KEY')
 
-# Kunci Durasi menjadi 1 Jam (3600 Detik)
-LIVE_DURATION_SEC = random.randint(3500, 3700) 
+# Durasi Live stabil 1 jam (3600 detik)
+LIVE_TARGET_DURATION = 3600 
 
 def get_services():
     try:
@@ -26,181 +27,154 @@ def get_services():
         t_str += '=' * (4 - (len(t_str) % 4))
         creds = pickle.loads(base64.b64decode(t_str))
         if creds.expired and creds.refresh_token: creds.refresh(Request())
-        return build('drive', 'v3', credentials=creds), build('youtube', 'v3', credentials=creds)
+        return build('drive', 'v3', credentials=creds)
     except Exception as e:
         print(f"⛔ GAGAL AUTH: {e}")
-        return None, None
+        return None
 
 def get_quotes(service):
-    backup_quotes = ["Tetap Semangat!", "Fokus pada tujuanmu.", "Kerja keras tak mengkhianati hasil."]
-    if not QUOTES_ID: return backup_quotes
+    backup = ["Stay Wild with MICRO WILD", "Menemukan ketenangan dalam alam.", "Fokus dan Produktif."]
     try:
         file_meta = service.files().get(fileId=QUOTES_ID).execute()
-        mime_type = file_meta.get('mimeType', '')
         fh = io.BytesIO()
-        if 'application/vnd.google-apps' in mime_type:
+        if 'application/vnd.google-apps' in file_meta.get('mimeType', ''):
             req = service.files().export_media(fileId=QUOTES_ID, mimeType='text/plain')
         else:
             req = service.files().get_media(fileId=QUOTES_ID)
-            
         downloader = MediaIoBaseDownload(fh, req)
         done = False
         while not done: _, done = downloader.next_chunk()
         lines = [l.strip() for l in fh.getvalue().decode('utf-8-sig').splitlines() if len(l.strip()) > 5]
-        random.shuffle(lines)
-        return lines if lines else backup_quotes
-    except: return backup_quotes
+        return lines if lines else backup
+    except: return backup
 
-def update_live_title(youtube, quote):
+def get_duration(input_p):
     try:
-        print("[*] Mencoba mengubah judul Live YouTube...")
-        request = youtube.liveBroadcasts().list(part="snippet", broadcastType="persistent", mine=True)
-        response = request.execute()
-        if not response.get('items'):
-            print("    ⚠️ Tidak ditemukan Broadcast default.")
-            return
-        broadcast = response['items'][0]
-        suffix = " | MICRO WILD Live"
-        max_len = 100 - len(suffix)
-        safe_quote = quote if len(quote) <= max_len else quote[:max_len-3] + "..."
-        new_title = safe_quote + suffix
-        broadcast['snippet']['title'] = new_title
-        youtube.liveBroadcasts().update(part="snippet", body=broadcast).execute()
-        print(f"    ✅ Judul Live diubah: '{new_title}'")
-    except Exception as e:
-        print(f"    ❌ Gagal mengubah judul Live: {e}")
+        cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', input_p]
+        return float(subprocess.check_output(cmd).decode().strip())
+    except: return 0
 
-def find_font():
-    paths = [
-        "/usr/share/fonts/truetype/msttcorefonts/comic.ttf", 
-        "/usr/share/fonts/truetype/msttcorefonts/Comic_Sans_MS.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-    ]
-    for p in paths:
-        if os.path.exists(p): return p
-    return None
-
-def standardize_video(input_path, output_path, quote, font_path):
+def standardize_video(input_p, output_p, quotes_pool, font_p):
+    """
+    Memastikan video 720p HD dan memasang teks berbeda setiap 3 menit.
+    Menggunakan audio asli dari video.
+    """
+    duration = get_duration(input_p)
+    
+    # 1. Cek Rotasi
     try:
-        cmd = ['ffprobe', '-loglevel', 'error', '-select_streams', 'v:0', '-show_entries', 'stream_tags=rotate', '-of', 'json', input_path]
-        rotation = int(json.loads(subprocess.check_output(cmd).decode('utf-8')).get('streams', [{}])[0].get('tags', {}).get('rotate', 0))
-    except: rotation = 0
+        cmd_rot = ['ffprobe', '-loglevel', 'error', '-select_streams', 'v:0', '-show_entries', 'stream_tags=rotate', '-of', 'json', input_p]
+        res = subprocess.check_output(cmd_rot).decode('utf-8')
+        rot = int(json.loads(res).get('streams', [{}])[0].get('tags', {}).get('rotate', 0))
+    except: rot = 0
 
-    filters = []
-    if rotation == 90: filters.append("transpose=1")
-    elif rotation == 180: filters.append("hflip,vflip")
-    elif rotation == 270: filters.append("transpose=2")
-    filters.append("scale=w=1280:h=720:force_original_aspect_ratio=increase,crop=1280:720")
-
-    words = quote.split()
-    chunks = [" ".join(words[i:i+4]) for i in range(0, len(words), 4)]
-    safe_txt = "\\n".join(chunks).replace("'", "").replace(":", "\\:")
+    vf = []
+    if rot == 90: vf.append("transpose=1")
+    elif rot == 180: vf.append("hflip,vflip")
+    elif rot == 270: vf.append("transpose=2")
     
-    t_start = random.randint(3, 10)
-    t_end = t_start + random.randint(10, 20)
-    
-    if font_path:
-        dt = (f"drawtext=text='{safe_txt}':fontfile={font_path}:fontcolor=red:"
-              f"bordercolor=black:borderw=4:"
-              f"shadowcolor=white:shadowx=2:shadowy=2:"
-              f"fontsize=50:line_spacing=15:"
-              f"x=(w-text_w)/2:y='(h-text_h)/2 + 15*sin(t*2)':"
-              f"enable='between(t,{t_start},{t_end})'")
-        filters.append(dt)
+    # Resolusi Standar Landscape 16:9
+    vf.append("scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1")
 
-    v_filter = ",".join(filters)
+    # 2. Overlay Teks Dinamis (Muncul setiap 180 detik / 3 menit)
+    if font_p and duration > 0:
+        # Tentukan berapa kali teks harus muncul
+        instances = math.ceil(duration / 180)
+        for i in range(instances):
+            start_t = (i * 180) + 10 # Mulai di detik ke-10, 190, 370...
+            end_t = start_t + 30     # Muncul selama 30 detik
+            
+            if start_t < duration:
+                txt = random.choice(quotes_pool)
+                # Bungkus teks agar tidak melebar keluar layar
+                wrapped_txt = "\\n".join(textwrap.wrap(txt, width=35))
+                safe_txt = wrapped_txt.replace("'", "").replace(":", "\\:")
+                
+                dt = (f"drawtext=text='{safe_txt}':fontfile='{font_p}':fontcolor=white:fontsize=40:"
+                      f"box=1:boxcolor=black@0.4:boxborderw=20:x=(w-text_w)/2:y='h-text_h-100 + 10*sin(t*1.5)':"
+                      f"enable='between(t,{start_t},{end_t})'")
+                vf.append(dt)
+
+    # 3. Indikator "REC" Berkedip (Efek Seni Kamera)
+    vf.append("drawtext=text='● REC':fontcolor=red:fontsize=30:x=50:y=50:alpha='if(lt(mod(t,2),1),1,0.2)'")
+    
+    # 4. Jam Digital Pojok Kanan
+    vf.append(f"drawtext=text='%{{localtime\\:%H\\\\:%M\\\\:%S}}':fontcolor=white:fontsize=25:x=w-text_w-50:y=50:box=1:boxcolor=black@0.5")
+
     cmd = [
-        'ffmpeg', '-y', '-i', input_path, '-vf', v_filter,
-        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28',
-        '-c:a', 'aac', '-ar', '44100', '-ac', '2', output_path
+        'ffmpeg', '-y', '-i', input_p, '-vf', ",".join(vf),
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26',
+        '-c:a', 'aac', '-ar', '44100', '-ac', '2', output_p
     ]
     return subprocess.run(cmd, capture_output=True).returncode == 0
 
 def main():
-    print(f"=== ROBOT LIVE NATURAL & 3D TEXT ===")
+    print(f"=== MICRO WILD: LIVE STREAM ENGINE (ORIGINAL AUDIO + DYNAMIC OVERLAY) ===")
+    drive = get_services()
+    if not drive: return
+
+    # 1. Ambil List File
+    v_files = drive.files().list(q=f"'{SOURCE_ID}' in parents and mimeType contains 'video' and trashed=false").execute().get('files', [])
+    quotes = get_quotes(drive)
     
-    if not STREAM_KEY or len(STREAM_KEY) < 10:
-        print("⛔ FATAL ERROR: YOUTUBE_STREAM_KEY KOSONG ATAU SALAH FORMAT!")
+    # Font standar di Linux
+    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+    if not v_files:
+        print("⛔ Folder Video Sumber Kosong!")
+        return
+    
+    random.shuffle(v_files)
+
+    # 2. Persiapan Video (Standardisasi & Baking)
+    v_list = ""
+    # Maksimal 10 video untuk menjaga stabilitas server
+    for i, v_info in enumerate(v_files[:10]):
+        raw, fixed = f"raw_{i}.mp4", f"vid_{i}.mp4"
+        print(f"[*] Mengolah Video {i+1}: {v_info['name']}")
+        
+        try:
+            with open(raw, "wb") as f:
+                f.write(drive.files().get_media(fileId=v_info['id']).execute())
+            
+            if standardize_video(raw, fixed, quotes, font_path):
+                v_list += f"file '{fixed}'\n"
+            
+            if os.path.exists(raw): os.remove(raw)
+        except Exception as e:
+            print(f"   ⚠️ Lewati file {v_info['name']} karena error: {e}")
+
+    if not v_list:
+        print("⛔ Tidak ada video yang berhasil diolah.")
         return
 
-    drive, youtube = get_services()
-    font_path = find_font()
-    if not drive or not youtube: return
+    with open("v_list.txt", "w") as f: f.write(v_list)
 
-    try:
-        quotes_pool = get_quotes(drive)
-        update_live_title(youtube, random.choice(quotes_pool))
-        
-        v_files = drive.files().list(q=f"'{SOURCE_ID}' in parents and mimeType contains 'video' and trashed=false").execute().get('files', [])
-        m_files = drive.files().list(q=f"'{MUSIC_ID}' in parents and mimeType contains 'audio' and trashed=false").execute().get('files', [])
+    # 3. Jalankan Streaming
+    rtmp_url = f"rtmp://a.rtmp.youtube.com/live2/{STREAM_KEY}"
+    print(f"\n[🚀] MEMULAI SIARAN LANGSUNG DENGAN AUDIO ASLI...")
+    
+    # FFmpeg Command: 
+    # - concat: menyambung video-video hasil olahan
+    # - stream_loop -1: mengulang terus jika durasi total kurang dari target
+    cmd = [
+        'ffmpeg', '-y', '-re',
+        '-f', 'concat', '-safe', '0', '-stream_loop', '-1', '-i', 'v_list.txt',
+        '-t', str(LIVE_TARGET_DURATION),
+        '-c:v', 'copy',  # Copy codec dari hasil baking agar CPU hemat
+        '-c:a', 'copy',  # Menggunakan audio asli sepenuhnya
+        '-f', 'flv', rtmp_url
+    ]
 
-        if not v_files or not m_files:
-            print("⛔ Bahan Kosong!")
-            return
+    # Jalankan proses siaran
+    subprocess.run(cmd)
+    print("\n✅ SIARAN SELESAI.")
 
-        random.shuffle(v_files)
-        random.shuffle(m_files)
-
-        v_list = ""
-        for i, v in enumerate(v_files[:8]):
-            raw, fixed = f"raw_{i}.mp4", f"fixed_{i}.mp4"
-            print(f"[*] Menyiapkan Video {i+1}...")
-            with open(raw, "wb") as f: f.write(drive.files().get_media(fileId=v['id']).execute())
-            if standardize_video(raw, fixed, quotes_pool[i % len(quotes_pool)], font_path):
-                v_list += f"file '{fixed}'\n"
-            if os.path.exists(raw): os.remove(raw)
-        with open("v_list.txt", "w") as f: f.write(v_list)
-
-        m_list = ""
-        for i, m in enumerate(m_files[:15]): 
-            mname = f"mus_{i}.mp3"
-            with open(mname, "wb") as f: f.write(drive.files().get_media(fileId=m['id']).execute())
-            m_list += f"file '{mname}'\n"
-        with open("m_list.txt", "w") as f: f.write(m_list)
-
-        rtmp = f"rtmp://a.rtmp.youtube.com/live2/{STREAM_KEY.strip()}"
-        print(f"\n[🚀] MEMULAI STREAMING KE YOUTUBE ({LIVE_DURATION_SEC} Detik)...")
-
-        # PERBAIKAN: Mengubah amix duration dari first menjadi longest, dan mengandalkan parameter -t
-        cmd = [
-            'ffmpeg', '-y', '-re',
-            '-stream_loop', '-1', '-f', 'concat', '-safe', '0', '-i', 'v_list.txt',
-            '-stream_loop', '-1', '-f', 'concat', '-safe', '0', '-i', 'm_list.txt',
-            '-filter_complex', '[0:a]volume=0.3[va];[1:a]volume=1.0[ma];[va][ma]amix=inputs=2:duration=longest[aout]',
-            '-t', str(LIVE_DURATION_SEC), # Kunci durasi mati di sini
-            '-map', '0:v', '-map', '[aout]',
-            '-c:v', 'libx264', '-preset', 'ultrafast', '-b:v', '2500k', 
-            '-g', '48', '-keyint_min', '48', 
-            '-c:a', 'aac', '-b:a', '128k',
-            '-f', 'flv', rtmp
-        ]
-
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        
-        berhasil_konek = False
-        for line in process.stdout:
-            if "frame=" in line:
-                berhasil_konek = True
-                print(f"Streaming: {line.strip()[:80]}", end="\r", flush=True)
-            elif "Connection refused" in line or "I/O error" in line or "Server error" in line:
-                print(f"\n[⛔ ERROR YOUTUBE]: {line.strip()}")
-            elif not berhasil_konek and ("rtmp" in line.lower() or "error" in line.lower()):
-                print(f"[INFO]: {line.strip()}")
-                
-        process.wait()
-
-        if process.returncode != 0:
-            print(f"\n❌ STREAMING TERPUTUS! (Kode Error FFmpeg: {process.returncode})")
-        else:
-            print(f"\n✅ STREAMING SELESAI DENGAN SUKSES (Tercapai Target 1 Jam).")
-
-    except Exception as e:
-        print(f"\n⛔ ERROR SISTEM: {e}")
-    finally:
-        for f in os.listdir():
-            if f.startswith("fixed_") or f.startswith("mus_") or f in ["v_list.txt", "m_list.txt"]:
-                try: os.remove(f)
-                except: pass
+    # Bersih-bersih file lokal
+    for f in os.listdir():
+        if f.startswith("vid_") or f == "v_list.txt":
+            try: os.remove(f)
+            except: pass
 
 if __name__ == "__main__":
     main()
