@@ -1,11 +1,12 @@
 name: 2. Robot Upload Shorts
 
 on:
+ on:
   workflow_dispatch:
   schedule:
-    # 08:00, 16:00, 00:00 WITA = 00, 08, 16 UTC
-    - cron: '0 0,8,16 * * *'
-
+    # Berjalan setiap 4 jam: 00, 04, 08, 12, 16, 20 UTC
+    # (Sama dengan 08, 12, 16, 20, 00, 04 WITA)
+    - cron: '0 */4 * * *'
 jobs:
   upload_job:
     runs-on: ubuntu-latest
