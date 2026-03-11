@@ -20,7 +20,7 @@ UPLOTAN_ID = os.environ.get('UPLOTAN_FOLDER_ID')
 QUOTES_ID = os.environ.get('QUOTES_FILE_ID') 
 
 MAX_DURATION = 52 
-BATCH_LIMIT = 3
+BATCH_LIMIT = 6
 
 # Cadangan jika Drive Gagal Total
 INTERNAL_BACKUP = [
