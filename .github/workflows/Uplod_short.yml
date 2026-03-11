@@ -1,7 +1,8 @@
 name: 2. Robot Upload Shorts
 
 on:
-  branch_protection_rule: workflow_dispatch:
+  workflow_dispatch:
+  branch_protection_rule:
   schedule:
     # Berjalan setiap 4 jam: 00, 04, 08, 12, 16, 20 UTC
     # (Sama dengan 08, 12, 16, 20, 00, 04 WITA)
