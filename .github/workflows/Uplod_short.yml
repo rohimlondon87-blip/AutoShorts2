@@ -1,8 +1,7 @@
 name: 2. Robot Upload Shorts
 
 on:
- on:
-  workflow_dispatch:
+ workflow_dispatch:
   schedule:
     # Berjalan setiap 4 jam: 00, 04, 08, 12, 16, 20 UTC
     # (Sama dengan 08, 12, 16, 20, 00, 04 WITA)
