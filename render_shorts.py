@@ -131,20 +131,25 @@ def render_video(v_in, a_in, v_out, text, v_start, a_start, font_p, font_color, 
         filter_complex = f'[0:v]{v_filter}[vout]; [0:a]volume=0.3[a1]; [1:a]volume=1.2[a2]; [a1][a2]amix=inputs=2:duration=first[aout]'
         cmd.extend(['-filter_complex', filter_complex, '-map', '[vout]', '-map', '[aout]'])
     else:
-        # 2. JIKA MENGGUNAKAN GRADASI VIRTUAL
+        # 2. JIKA MENGGUNAKAN GRADASI VIRTUAL (VERSI DIPERCEPAT)
         r1, g1, b1 = color_top
         r2, g2, b2 = color_bottom
         
-        grad_filter = (
-            f"nullsrc=s=1080x1920:d={MAX_DURATION}:r=30,"
-            f"geq=r='{r1}*(1-Y/H)+{r2}*(Y/H)':"
-            f"g='{g1}*(1-Y/H)+{g2}*(Y/H)':"
-            f"b='{b1}*(1-Y/H)+{b2}*(Y/H)'"
-        )
-        cmd.extend(['-f', 'lavfi', '-i', grad_filter])
+        # Langkah A: Bikin 1 frame gambar statis (Hanya butuh 0.1 detik)
+        temp_bg = "temp_bg.png"
+        grad_cmd = [
+            'ffmpeg', '-y', '-f', 'lavfi', 
+            '-i', 'nullsrc=s=1080x1920:d=1:r=1',
+            '-vf', f"geq=r='{r1}*(1-Y/H)+{r2}*(Y/H)':g='{g1}*(1-Y/H)+{g2}*(Y/H)':b='{b1}*(1-Y/H)+{b2}*(Y/H)'",
+            '-frames:v', '1', temp_bg
+        ]
+        subprocess.run(grad_cmd, capture_output=True)
+        
+        # Langkah B: Gunakan gambar statis tersebut sebagai video yang di-loop
+        cmd.extend(['-loop', '1', '-framerate', '30', '-t', str(MAX_DURATION), '-i', temp_bg])
         cmd.extend(['-ss', str(round(a_start, 2)), '-t', str(MAX_DURATION), '-i', a_in])
         
-        # Karena gradasi tidak punya suara, kita HANYA pakai suara musik [1:a] tanpa dicampur (amix)
+        # Karena gradasi statis tidak punya suara, kita HANYA pakai suara musik [1:a]
         filter_complex = f'[0:v]{v_filter}[vout]; [1:a]volume=1.2[aout]'
         cmd.extend(['-filter_complex', filter_complex, '-map', '[vout]', '-map', '[aout]'])
 
@@ -252,7 +257,8 @@ def main():
             print(f"   ❌ Error File: {e}")
         
         finally:
-            for f in [t_v, t_a, out_name]:
+            # Tambahkan "temp_bg.png" agar file gambar sementara ikut dihapus
+            for f in [t_v, t_a, out_name, "temp_bg.png"]:
                 if os.path.exists(f): os.remove(f)
 
     print("\n[✨] Selesai.")
