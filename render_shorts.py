@@ -30,7 +30,6 @@ INTERNAL_BACKUP = [
 
 def get_random_dark_rgb():
     """Menghasilkan tuple RGB warna gelap secara acak untuk gradasi."""
-    # Angka dibatasi agar warnanya condong gelap (10-100) supaya teks terang jelas terbaca
     return (random.randint(10, 80), random.randint(10, 80), random.randint(20, 100))
 
 def get_drive_service():
@@ -63,10 +62,8 @@ def get_available_fonts():
         "/usr/share/fonts/truetype/msttcorefonts/Arial_Bold.ttf",
         "/usr/share/fonts/truetype/msttcorefonts/Trebuchet_MS_Bold.ttf"
     ]
-    # Filter hanya font yang benar-benar berhasil diinstal di server
     available_fonts = [p for p in paths if os.path.exists(p)]
     
-    # Fallback jika terjadi kesalahan instalasi font di GitHub Actions
     if not available_fonts:
         print("⚠️ Peringatan: Font kustom tidak ditemukan. Menggunakan fallback lokal.")
         available_fonts = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
@@ -95,12 +92,11 @@ def get_quotes_robust(service):
         while not done: _, done = downloader.next_chunk()
         
         content = fh.getvalue().decode('utf-8-sig')
-        # Hapus baris kosong & spasi
         lines = [l.strip() for l in content.splitlines() if len(l.strip()) > 5]
         
         if not lines: return INTERNAL_BACKUP
             
-        random.shuffle(lines) # DIACAK
+        random.shuffle(lines) 
         return lines
 
     except Exception as e:
@@ -117,7 +113,7 @@ def render_video(v_in, a_in, v_out, text, v_start, a_start, font_p, font_color, 
     wrapped = "\n".join(textwrap.wrap(text, width=20))
     safe_txt = wrapped.replace("'", "").replace(":", "\\:")
     
-    # Filter Teks: Menggunakan font_p dan font_color
+    # Filter Teks
     v_filter = (
         f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
         f"drawtext=text='{safe_txt}':fontcolor={font_color}:fontsize=80:fontfile={font_p}:"
@@ -127,10 +123,15 @@ def render_video(v_in, a_in, v_out, text, v_start, a_start, font_p, font_color, 
     cmd = ['ffmpeg', '-y']
     
     if v_in:
-        # Pake video asli jika ada
+        # 1. JIKA MENGGUNAKAN VIDEO ASLI DARI DRIVE
         cmd.extend(['-ss', str(round(v_start, 2)), '-t', str(MAX_DURATION), '-i', v_in])
+        cmd.extend(['-ss', str(round(a_start, 2)), '-t', str(MAX_DURATION), '-i', a_in])
+        
+        # Campur suara video asli (30%) dan musik (120%)
+        filter_complex = f'[0:v]{v_filter}[vout]; [0:a]volume=0.3[a1]; [1:a]volume=1.2[a2]; [a1][a2]amix=inputs=2:duration=first[aout]'
+        cmd.extend(['-filter_complex', filter_complex, '-map', '[vout]', '-map', '[aout]'])
     else:
-        # Bikin background gradasi vertikal
+        # 2. JIKA MENGGUNAKAN GRADASI VIRTUAL
         r1, g1, b1 = color_top
         r2, g2, b2 = color_bottom
         
@@ -141,19 +142,25 @@ def render_video(v_in, a_in, v_out, text, v_start, a_start, font_p, font_color, 
             f"b='{b1}*(1-Y/H)+{b2}*(Y/H)'"
         )
         cmd.extend(['-f', 'lavfi', '-i', grad_filter])
+        cmd.extend(['-ss', str(round(a_start, 2)), '-t', str(MAX_DURATION), '-i', a_in])
+        
+        # Karena gradasi tidak punya suara, kita HANYA pakai suara musik [1:a] tanpa dicampur (amix)
+        filter_complex = f'[0:v]{v_filter}[vout]; [1:a]volume=1.2[aout]'
+        cmd.extend(['-filter_complex', filter_complex, '-map', '[vout]', '-map', '[aout]'])
 
-    # Input musik dan proses rendering
+    # Pengaturan Output Video dan Audio
     cmd.extend([
-        '-ss', str(round(a_start, 2)), '-t', str(MAX_DURATION), '-i', a_in,
-        '-filter_complex', f'[0:v]{v_filter}[vout]; [0:a]volume=0.3[a1]; [1:a]volume=1.2[a2]; [a1][a2]amix=inputs=2:duration=first[aout]',
-        '-map', '[vout]', '-map', '[aout]',
-        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', '-t', str(MAX_DURATION), 
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', 
+        '-c:a', 'aac', # Tambahkan konversi audio ke AAC agar aman
+        '-t', str(MAX_DURATION), 
         v_out 
     ])
     
     res = subprocess.run(cmd, capture_output=True)
     if res.returncode != 0:
-        print(f"[-] FFmpeg Error: {res.stderr.decode()[:200]}")
+        # Perbaikan sistem log: Ambil 500 karakter TERAKHIR dari log error agar penyebab pastinya terlihat
+        err_msg = res.stderr.decode()
+        print(f"[-] FFmpeg Error Detail:\n{err_msg[-500:]}")
         return False
     return True
 
@@ -188,7 +195,6 @@ def main():
         print(f"Error Drive: {e}")
         return
 
-    # Tentukan jumlah render
     limit = min(BATCH_LIMIT, len(v_files)) if v_files else BATCH_LIMIT
     
     for i in range(limit):
@@ -219,7 +225,6 @@ def main():
         out_name = f"Shorts_{int(time.time())}_{i}.mp4"
 
         try:
-            # Pengecekan Video atau Background Virtual
             if f_vid:
                 with open(t_v, "wb") as f: f.write(service.files().get_media(fileId=f_vid['id']).execute())
                 dv = get_media_duration(t_v)
@@ -235,7 +240,6 @@ def main():
 
             print(f"   ⏱️ Potong: Musik dari {as_:.1f}s")
 
-            # Eksekusi Render
             if render_video(v_input_path, t_a, out_name, txt, vs, as_, chosen_font, chosen_color, warna_atas, warna_bawah):
                 meta = {'name': out_name, 'parents': [UPLOTAN_ID], 'description': txt}
                 media = MediaFileUpload(out_name, mimetype='video/mp4')
@@ -248,7 +252,6 @@ def main():
             print(f"   ❌ Error File: {e}")
         
         finally:
-            # Pembersihan file temporary
             for f in [t_v, t_a, out_name]:
                 if os.path.exists(f): os.remove(f)
 
